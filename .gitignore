@@ -1,4 +1,4 @@
-# Frontend dependencies, build outputs, and caches
+# Frontend dependencies, builds, and TypeScript/Vite caches
 node_modules/
 dist/
 .vite/
@@ -21,18 +21,18 @@ __pycache__/
 .mypy_cache/
 *.egg-info/
 
-# Test coverage
+# Test coverage and reports
 coverage/
 htmlcov/
 .coverage
 .coverage.*
 
-# Local configuration; keep the documented example
+# Local configuration; keep the documented configuration example
 .env
 .env.*
 !.env.example
 
-# Downloaded model weights and exported models
+# Downloaded model weights and exported inference models
 /backend/models/
 *.pt
 *.pth
@@ -55,4 +55,4 @@ Desktop.ini
 *.swo
 *~
 
-# Keep lockfiles, source, icons, docs, and .gitkeep markers in Git.
+# Keep package-lock.json, Cargo.lock, app icons, source, and docs in Git.

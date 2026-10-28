@@ -1,31 +1,77 @@
-"""API entry point for the backend running on the Linux server."""
+"""ASGI entry point: run one Uvicorn worker for one shared model."""
 
-import platform
-import socket
+import asyncio
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Vision Studio API")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5180",
-        "http://127.0.0.1:5180",
-        "http://localhost:1420",
-        "http://127.0.0.1:1420",
-    ],
-    allow_methods=["GET"],
-    allow_headers=["Content-Type"],
-)
+from .config import ServerConfig
+from .detector import Detector
+from .inference_worker import InferenceWorker
+from .schemas import RESOLUTIONS
+from .websocket_handler import handle_detection_socket
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    """Report the backend's identity so clients can verify the remote connection."""
-    return {
-        "status": "ok",
-        "service": "vision-studio-backend",
-        "hostname": socket.gethostname(),
-        "system": platform.system(),
-    }
+def create_app(config: ServerConfig | None = None, detector: Detector | None = None) -> FastAPI:
+    settings = config or ServerConfig.from_environment()
+    worker = InferenceWorker(settings, detector)
+    client_lease = asyncio.Lock()
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        await worker.start()
+        try:
+            yield
+        finally:
+            await worker.stop()
+
+    application = FastAPI(title="Vision Studio", version="0.1.0", lifespan=lifespan)
+    application.state.worker = worker
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(settings.allowed_origins),
+        allow_methods=["GET"],
+        allow_headers=["Content-Type"],
+        allow_credentials=False,
+    )
+
+    def server_info() -> dict:
+        return {
+            "name": "Vision Studio",
+            "protocol_version": 1,
+            "model_ready": worker.detector is not None,
+            "model_name": worker.detector.model_name if worker.detector else settings.model_path.name,
+            "provider": worker.detector.provider if worker.detector else settings.provider,
+            "supported_options": {
+                "confidence": {"min": 0.05, "max": 0.95, "default": 0.4},
+                "resolutions": list(RESOLUTIONS),
+                "max_fps": settings.max_fps,
+                "model_selection": False,
+            },
+            "capabilities": {
+                "max_clients": 1,
+                "max_in_flight": 1,
+                "max_message_bytes": settings.max_message_bytes,
+                "coordinates": "normalized_unmirrored",
+                "encoding": "jpeg",
+                "envelope": "VS01",
+            },
+        }
+
+    @application.get("/health")
+    async def health() -> dict:
+        return {"status": "ok", "model_ready": worker.detector is not None, "worker_busy": worker.busy}
+
+    @application.get("/api/info")
+    async def info() -> dict:
+        return server_info()
+
+    @application.websocket("/ws/detect")
+    async def detect(socket: WebSocket) -> None:
+        await handle_detection_socket(socket, worker, client_lease, server_info())
+
+    return application
+
+
+app = create_app()

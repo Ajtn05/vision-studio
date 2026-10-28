@@ -1,0 +1,44 @@
+[Unit]
+Description=Vision Studio inference backend
+After=network.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@BACKEND_DIRECTORY@
+ExecStart=@PYTHON_EXECUTABLE@ -m app
+Environment=PYTHONUNBUFFERED=1
+Environment=YOLO_AUTOINSTALL=false
+Environment=YOLO_CONFIG_DIR=/var/lib/vision-studio/ultralytics
+Environment=XDG_CACHE_HOME=/var/cache/vision-studio
+Environment=MPLCONFIGDIR=/var/cache/vision-studio/matplotlib
+Environment=OMP_NUM_THREADS=2
+Environment=MKL_NUM_THREADS=2
+Environment=OPENBLAS_NUM_THREADS=2
+StateDirectory=vision-studio
+StateDirectoryMode=0700
+CacheDirectory=vision-studio
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+Nice=10
+CPUQuota=150%
+MemoryHigh=1500M
+MemoryMax=2200M
+TasksMax=128
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,1 +1,1 @@
-"""Vision Studio backend application."""
+"""Vision Studio's Linux inference server."""

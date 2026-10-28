@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vision Studio · integration test</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      // This entry is served only by Vite development mode and is not in dist/.
+      // It exercises the real capture, JPEG, socket, and Canvas paths without a webcam.
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280;
+      canvas.height = 720;
+      const context = canvas.getContext('2d');
+      let animation;
+      function draw(time) {
+        context.fillStyle = '#18243a';
+        context.fillRect(0, 0, 1280, 720);
+        context.strokeStyle = '#2d405e';
+        context.lineWidth = 1;
+        for (let x = 0; x < 1280; x += 80) {
+          context.beginPath();
+          context.moveTo(x, 0);
+          context.lineTo(x, 720);
+          context.stroke();
+        }
+        for (let y = 0; y < 720; y += 80) {
+          context.beginPath();
+          context.moveTo(0, y);
+          context.lineTo(1280, y);
+          context.stroke();
+        }
+        context.fillStyle = '#728bba';
+        context.fillRect(128, 144, 384, 288);
+        context.fillStyle = '#d6e2fc';
+        context.font = '24px system-ui';
+        context.fillText('Synthetic camera · test fixture', 140, 590);
+        context.fillText('No real model or webcam', 140, 630);
+        context.fillStyle = '#8ddec3';
+        context.beginPath();
+        context.arc(850 + Math.sin(time / 1000) * 100, 300, 26, 0, Math.PI * 2);
+        context.fill();
+        animation = requestAnimationFrame(draw);
+      }
+      draw(0);
+      const devices = new EventTarget();
+      devices.getUserMedia = async () => canvas.captureStream(30);
+      devices.enumerateDevices = async () => [];
+      Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: devices });
+      window.addEventListener('pagehide', () => cancelAnimationFrame(animation));
+      await import('/src/main.tsx');
+    </script>
+  </body>
+</html>

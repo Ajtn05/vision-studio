@@ -1,0 +1,8 @@
+# No PyTorch, Ultralytics, or model weights are needed for tests.
+fastapi>=0.115,<1
+uvicorn[standard]>=0.54,<0.55
+numpy>=1.26,<3
+opencv-python-headless>=4.10,<5
+httpx>=0.28,<1
+pytest>=8.3,<10
+ruff>=0.11,<1
