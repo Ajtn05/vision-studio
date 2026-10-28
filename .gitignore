@@ -1,0 +1,58 @@
+# Frontend dependencies, build outputs, and caches
+node_modules/
+dist/
+.vite/
+.vite-temp/
+*.tsbuildinfo
+
+# Tauri/Rust build outputs and generated schemas
+target/
+/frontend/src-tauri/gen/
+*.app/
+*.dmg
+
+# Python virtual environments, bytecode, and tooling caches
+.venv*/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# Test coverage
+coverage/
+htmlcov/
+.coverage
+.coverage.*
+
+# Local configuration; keep the documented example
+.env
+.env.*
+!.env.example
+
+# Downloaded model weights and exported models
+/backend/models/
+*.pt
+*.pth
+*.onnx
+*_openvino_model/
+
+# Local logs and signing credentials
+*.log
+npm-debug.log*
+*.p12
+*.pfx
+*.p8
+
+# OS metadata and editor temporary files
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+
+# Keep lockfiles, source, icons, docs, and .gitkeep markers in Git.
