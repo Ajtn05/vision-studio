@@ -1,8 +1,27 @@
-# macOS client
+# macOS client: local or server backend
+
+The Mac client works with either backend. Choose one before connecting:
+
+| Where detection runs | Backend URL | Instructions |
+| --- | --- | --- |
+| This Mac | `ws://127.0.0.1:8000` | [Mac-only backend setup](macos-local.md) |
+| Linux server | `wss://<server-hostname>:8443` | [Mac + server setup](DETECTION_SERVER_SETUP.md) |
+
+Replace `<server-hostname>` with the `.ts.net` hostname printed by Tailscale
+Serve on your server. Run the development commands from your own clone of
+the repository.
+
+Both modes use the frontend and camera steps below. For short everyday startup
+commands, see [setup overview](SETUP.md).
 
 ## Development prerequisites
 
-Use macOS 12+ on Apple Silicon, Node.js 22.12+ (prefer LTS), Rust stable from the official installer, and Xcode Command Line Tools. Check versions with `node --version`, `npm --version`, `rustc --version`, and `xcode-select -p`. If Command Line Tools are missing, run `xcode-select --install` and finish the installer.
+For browser development, use Node.js 22.12+ (prefer LTS). Native app
+development on macOS 12+ additionally needs Rust stable and Xcode Command Line
+Tools; the existing native setup is validated on Apple Silicon. Check versions
+with `node --version`, `npm --version`, `rustc --version`, and `xcode-select -p`.
+If Command Line Tools are missing, run `xcode-select --install` and finish the
+installer. A prebuilt client app needs neither Node nor Rust to run.
 
 From the project:
 
@@ -14,7 +33,10 @@ npm run dev
 
 Open `http://127.0.0.1:1420`. The dev server listens only on loopback. The backend allowlist must contain this exact origin. `http://localhost:1420` is also allowed by the example, but an origin with another port is different. A remote browser requires HTTPS for MediaDevices; ordinary LAN HTTP is not a secure camera context.
 
-Only a developer running backend tests needs Python on the Mac. Normal client use and frontend development never need ML dependencies or model weights.
+The Mac needs Python, PyTorch, and weights when it also runs the local backend.
+When connecting to Linux, client use and frontend development need no Mac ML
+installation. The native app bundle contains the client; the selected backend
+is always started separately.
 
 ## Desktop development and builds
 
@@ -45,15 +67,15 @@ The native capability grants no Rust/plugin permissions because this MVP uses br
 
 The production CSP permits WSS only to `*.ts.net` and allows plain WS only to `localhost:8000` and `127.0.0.1:8000`. The client additionally rejects remote non-Tailscale hosts and insecure remote URLs. No global `connect-src *`, native network permission, remote script, remote font, or TLS bypass is used. For a deployment restricted to one tailnet server, replace the `wss://*.ts.net:*` CSP entry with that exact hostname/port before building. The development CSP adds only the local Vite HMR socket.
 
-Packaged macOS pages use the `tauri://localhost` origin, which must be explicitly present in the Linux WebSocket allowlist. Confirm the actual origin in server rejection logs if using a different platform or custom scheme; do not allow `null` or wildcard origins to work around it.
+Packaged macOS pages use the `tauri://localhost` origin, which must be explicitly present in the selected backend's WebSocket allowlist, whether that backend runs on the Mac or Linux. Confirm the actual origin in backend rejection logs if using a different platform or custom scheme; do not allow `null` or wildcard origins to work around it.
 
 ## Using the workspace
 
-1. Join the Mac and Linux server to the same tailnet with access to the Serve port.
-2. Paste the WSS root URL printed by Linux's Serve command (including `:8443` if selected).
+1. Start and verify the chosen backend. For Linux, connect both machines to the same tailnet; for Mac-only testing, start the local Python backend.
+2. Paste its Backend URL from the table above. Click Disconnect before changing a saved URL.
 3. Click Connect. The model name/provider appear only after a real configuration acknowledgement.
 4. Start camera; select a built-in/external camera if needed. The video is local even if the server is disconnected.
-5. Change confidence, resolution, target FPS, JPEG quality, or mirroring. Settings apply immediately; model/provider are selected on Linux.
+5. Try Live/Balanced/Detail, or edit confidence, inference size, frame size, target FPS, JPEG quality, or mirroring. Settings apply immediately; the model/provider are selected on the machine running the backend.
 6. Stop camera to release its tracks. Disconnect stops inference and cancels reconnect attempts; it does not stop local preview.
 
 No recording or snapshot feature is present. The app retains only the latest detection result and a short array of completion timestamps in memory.

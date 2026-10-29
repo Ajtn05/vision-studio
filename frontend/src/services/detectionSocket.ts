@@ -166,12 +166,28 @@ export class DetectionSocket {
       if (!isRecord(message.config) || message.config.revision !== this.revision) return;
       const info = parseServerInfo(message.info);
       this.publish({ info });
+      const requestedModel = this.config.model ?? 'objects';
+      const selected = info.models?.find((model) => model.id === requestedModel);
+      // Default-mode clients can still use a hand-only server. Advanced
+      // selections must be explicitly available; never silently run another model.
+      if (
+        requestedModel !== 'objects' &&
+        (!selected?.available || !info.supported_options?.model_selection)
+      ) {
+        throw new Error(
+          selected?.reason ??
+            'This backend does not support the selected model. Choose Object detection.',
+        );
+      }
       // Negotiate the extension after a basic handshake, so current clients
       // still connect to servers that reject unknown configuration fields.
       if (
-        this.config.inference_size !== undefined &&
-        info.supported_options?.inference_sizes?.includes(this.config.inference_size) &&
-        message.config.inference_size !== this.config.inference_size
+        (this.config.inference_size !== undefined &&
+          info.supported_options?.inference_sizes?.includes(this.config.inference_size) &&
+          message.config.inference_size !== this.config.inference_size) ||
+        (selected?.available &&
+          info.supported_options?.model_selection &&
+          message.config.model !== requestedModel)
       ) {
         this.revision++;
         this.openedAt = performance.now();
@@ -233,7 +249,8 @@ export class DetectionSocket {
     if (
       config.confidence === this.config.confidence &&
       config.resolution === this.config.resolution &&
-      config.inference_size === this.config.inference_size
+      config.inference_size === this.config.inference_size &&
+      config.model === this.config.model
     )
       return;
     this.config = config;
@@ -247,7 +264,7 @@ export class DetectionSocket {
   }
 
   private sendConfiguration(): void {
-    const { confidence, resolution, inference_size } = this.config;
+    const { confidence, resolution, inference_size, model } = this.config;
     const supported =
       inference_size !== undefined &&
       this.snapshot.info?.supported_options?.inference_sizes?.includes(inference_size);
@@ -258,6 +275,10 @@ export class DetectionSocket {
         confidence,
         resolution,
         ...(supported ? { inference_size } : {}),
+        ...(this.snapshot.info?.supported_options?.model_selection &&
+        this.snapshot.info.models?.some((option) => option.id === model && option.available)
+          ? { model }
+          : {}),
       }),
     );
   }

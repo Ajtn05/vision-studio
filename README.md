@@ -1,43 +1,56 @@
 # Vision Studio
 
-A readable, real-time computer vision desktop app. Your Mac renders its webcam locally; a Linux server receives sampled JPEGs, runs a nano YOLO model, and returns object labels and normalized bounding boxes. A separate Canvas draws detections without slowing the preview. The interface is a compact technical control panel with explicit settings, a detection table, and measured statistics.
+A readable, real-time computer vision desktop app. Your Mac renders its webcam locally; a backend on Linux or the same Mac receives sampled JPEGs and runs local YOLO/YOLOE object detection or optional MediaPipe hand landmarks. A separate Canvas draws detections, finger joints, or object measurements without slowing the preview. The interface is a compact technical control panel with explicit settings, a detection table, and measured statistics.
 
 ```text
 Mac / React + Tauri 2                         Linux Mint / FastAPI
-camera → local video                         single CPU model
+camera → local video                         serial local inference
           ↓ sampled JPEG + frame metadata    ↑
           └──────── private WSS / Tailscale ──┘
           Canvas ← JSON object detections
 ```
 
-The Mac needs no Python, model weights, PyTorch, or OpenVINO for normal use. Browser development mode uses the same application and protocol.
+With the Linux backend, the Mac runs only the client and needs no Python,
+model weights, PyTorch, or OpenVINO. For Mac-only testing, the Mac runs both
+the client and the Python backend. Browser and desktop modes use the same
+application and protocol.
 
 ## Quick start
 
-The canonical Mac checkout is `~/CS/Computer-Vision`. It contains the complete frontend, backend, desktop shell, tests, and deployment documentation.
+Start with the [two-mode setup guide](docs/SETUP.md):
 
-For a fresh Mac checkout:
+| Test mode | Backend URL in the app | Detailed guide |
+| --- | --- | --- |
+| Mac + Linux server | `wss://<server-hostname>:8443` | [Mac + server](docs/DETECTION_SERVER_SETUP.md) |
+| Mac alone, including real local inference | `ws://127.0.0.1:8000` | [Mac-only testing](docs/macos-local.md) |
+
+The sections below describe fresh Linux setup and the shared Mac client.
+
+Clone the repository into a directory of your choice. It contains the complete frontend, backend, desktop shell, tests, and deployment documentation.
+
+For a fresh checkout on either machine:
 
 ```bash
-git clone https://github.com/Ajtn05/vision-studio.git ~/CS/Computer-Vision
-cd ~/CS/Computer-Vision
+git clone https://github.com/Ajtn05/vision-studio.git
+cd vision-studio
 ```
 
-Run commands from this project directory. On Linux, clone the repository to `~/vision-studio`, or copy its source without `node_modules`, `.venv*`, model files, or `target`. Install dependencies separately on each machine.
+Run commands from this project directory. In the guides, `/path/to/vision-studio` means your own repository location on the machine running the command. Replace `<server-hostname>` with the `.ts.net` hostname printed by Tailscale Serve. If copying source between machines, exclude `node_modules`, `.venv*`, model files, and `target`. Install dependencies separately on each machine.
 
-For the existing `mint-server` deployment on port **8001**, follow [the detection server setup](docs/DETECTION_SERVER_SETUP.md). The fresh-install instructions below use port 8000. [Setup overview](docs/SETUP.md) links the machine-specific guides.
+For a Linux backend on port **8001**, follow [the detection server setup](docs/DETECTION_SERVER_SETUP.md). The fresh-install instructions below use port 8000. [Setup overview](docs/SETUP.md) links the machine-specific guides.
 
 ### Linux Mint: prepare and run the real backend
 
 Use Python 3.10–3.12 (3.12 recommended) and an existing Tailscale installation. The CPU wheel command avoids downloading NVIDIA CUDA libraries. Installation and model preparation require internet access; normal operation uses local weights.
 
 ```bash
-cd ~/vision-studio/backend
+cd /path/to/vision-studio/backend
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 python -m pip install -r requirements.txt
+python -m pip install -r requirements-vocabulary.txt
 cp .env.example .env
 python scripts/prepare_model.py
 python -m app
@@ -79,7 +92,7 @@ npm run tauri -- build --bundles app,dmg
 
 The app is created in `frontend/src-tauri/target/release/bundle/macos/Vision Studio.app`; the disk image is in `bundle/dmg`. Open the app, enter your private WSS backend URL, click **Connect**, and **Start camera**. Allow camera access when prompted. Switching the camera, mirroring, confidence, resolution, FPS, and JPEG quality works from the interface. Settings are saved locally; camera IDs and credentials are not persisted.
 
-See [macOS setup](docs/macos-setup.md) for signing, permissions, and building. The default preview request is 1280×720 at 30 FPS; actual camera capabilities determine the result. Transmission defaults to 640×360, 5 FPS, JPEG quality 0.65, confidence 0.4, and one frame in flight.
+See [macOS setup](docs/macos-setup.md) for signing, permissions, and building. The default preview request is 1280×720 at 30 FPS; actual camera capabilities determine the result. The Live preset defaults to 320×180 frames, 320-pixel inference, a 10 FPS target, JPEG quality 0.65, confidence 0.4, and one frame in flight. Each response triggers capture of the newest available camera frame; actual update speed depends on inference and network latency.
 
 ## Learn the code
 
@@ -98,7 +111,30 @@ See [macOS setup](docs/macos-setup.md) for signing, permissions, and building. T
 | `backend/app/detector.py` | Small detector contract and real Ultralytics adapter |
 | `deployment/` | Reviewable service template and local renderer |
 
-Read [architecture](docs/architecture.md), [protocol](docs/protocol.md), [troubleshooting](docs/troubleshooting.md), and [verification](docs/verification.md). To add a detector, implement the attributes and `detect` method in `Detector`, then select it in the application's startup path. Preserve the public `Detection` schema and single-worker ownership. The test fake exists only in tests and is never selected by normal startup.
+Read [architecture](docs/architecture.md), [protocol](docs/protocol.md), [troubleshooting](docs/troubleshooting.md), and [verification](docs/verification.md). To add a detector, implement the attributes and `detect` method in `Detector`, then register it in the worker's model catalog and selection path. Preserve normalized detection coordinates and single-worker ownership. The test fake exists only in tests and is never selected by normal startup.
+
+See [detection quality and speed](docs/detection-quality.md) for the Live/Balanced/Detail presets, independent inference resolution, and broader model setup. New configurations use YOLOE-26n with a baked vocabulary of 1,203 LVIS object categories. Existing `.env` files retain their selected model; the guide explains how to upgrade. A small variant is available when localization quality matters more than CPU cost.
+
+## Vision modes
+
+After connecting, use **Vision mode** to switch between **Object detection**,
+**Hands & fingers**, and **Object measurement** without restarting the session.
+Hands uses an optional local MediaPipe model to draw 21 joints per hand and
+estimate raised fingers. Measurement uses the existing object detector, shows
+bounding-box dimensions in pixels, and supports a known reference width for
+approximate centimeters or inches.
+
+On the machine running the backend, enable hands with:
+
+```bash
+cd backend
+# Activate your backend environment first (.venv on Linux, .venv-mac on macOS).
+python -m pip install -r requirements-hands.txt
+python scripts/prepare_hand_model.py
+```
+
+Restart the backend after installation. See [vision modes and calibration](docs/vision-modes.md)
+for setup, measurement limits, and verification.
 
 ## Tests
 
@@ -122,10 +158,13 @@ python -m pytest -q
 python -m ruff check app tests scripts
 ```
 
-The real Mac-to-Linux webcam check and measured CPU/OpenVINO comparison are documented separately. No benchmark claim is made for the IdeaPad until those checks run on that machine.
+See [verification](docs/verification.md) for the synthetic fixture, real camera
+acceptance steps, and measured CPU results on the i5-8265U server. OpenVINO and
+camera accuracy require their own checks; model-call timings exclude webcam
+capture and transport.
 
 ## Deployment and scope
 
-This MVP supports one active client, object detection, and private Tailscale networking. It has no recording, tracking, cloud upload, public API, or model switching from the client. Neither the server nor client stores frames. In-flight inference threads cannot be killed safely: on a timeout the server retains the busy slot until the work exits; systemd can restart a stuck process. Server health reports availability separately from model readiness.
+This app supports one active client, selectable local vision modes, and private Tailscale networking. It has no recording, persistent tracking, or cloud upload. Neither the server nor client stores frames. In-flight inference threads cannot be killed safely: on a timeout the server retains the busy slot until the work exits; systemd can restart a stuck process. Server health reports availability separately from model readiness.
 
 Before distributing, read [licensing considerations](docs/licensing.md). The Ultralytics runtime and pretrained weights have licensing obligations; a proprietary distribution must not be assumed permissible.

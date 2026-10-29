@@ -256,4 +256,62 @@ describe('detection session', () => {
     vi.advanceTimersByTime(250);
     expect(available).toHaveBeenCalledTimes(2);
   });
+  it('negotiates the selected model after discovery and rejects results from the previous mode', () => {
+    const info = {
+      model_name: 'test',
+      provider: 'test',
+      model_ready: true,
+      capabilities: { max_message_bytes: 1048576 },
+      supported_options: { model_selection: true },
+      models: [
+        { id: 'objects', name: 'Objects', available: true },
+        { id: 'hands', name: 'Hands', available: true },
+        { id: 'measurement', name: 'Measurement', available: true },
+      ],
+    };
+    current().open();
+    current().receive({ type: 'ready', config: { revision: 1, model: 'objects' }, info });
+    expect(send()).toBe(true);
+    client.configure({ ...config, model: 'hands' });
+    expect(JSON.parse(current().sent.at(-1) as string)).toMatchObject({
+      model: 'hands',
+      revision: 2,
+    });
+    expect(client.canSend()).toBe(false);
+    current().receive({ type: 'ready', config: { revision: 2, model: 'hands' }, info });
+    // The old frame still owns the single in-flight slot until it finishes.
+    expect(client.canSend()).toBe(false);
+    current().receive(result);
+    expect(snapshot.result).toBeNull();
+    expect(send()).toBe(true);
+    current().receive({ ...result, model: 'hands', revision: 2, frame_id: 2 });
+    expect(snapshot.result?.model).toBe('hands');
+  });
+  it('reapplies a selected model on reconnect only after the initial handshake', () => {
+    client.connect('ws://localhost:8000', { ...config, model: 'measurement' });
+    current().open();
+    expect(JSON.parse(current().sent[0] as string)).not.toHaveProperty('model');
+    const info = {
+      model_name: 'test',
+      provider: 'test',
+      model_ready: true,
+      capabilities: { max_message_bytes: 1048576 },
+      supported_options: { model_selection: true },
+      models: [{ id: 'measurement', name: 'Measurement', available: true }],
+    };
+    current().receive({ type: 'ready', config: { revision: 1, model: 'objects' }, info });
+    expect(JSON.parse(current().sent.at(-1) as string)).toMatchObject({
+      revision: 2,
+      model: 'measurement',
+    });
+    expect(client.canSend()).toBe(false);
+    current().receive({ type: 'ready', config: { revision: 2, model: 'measurement' }, info });
+    expect(client.canSend()).toBe(true);
+  });
+  it('gives a useful error when a previously selected model is missing on another server', () => {
+    client.connect('ws://localhost:8000', { ...config, model: 'hands' });
+    ready();
+    expect(snapshot.state).toBe('error');
+    expect(snapshot.error).toContain('does not support the selected model');
+  });
 });

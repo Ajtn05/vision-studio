@@ -374,6 +374,31 @@ main {
 .field-help {
   margin-bottom: 18px;
 }
+.model-setup {
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.model-setup summary {
+  cursor: pointer;
+  color: #dcc292;
+}
+.model-setup p {
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+.calibration-status {
+  color: #7dd9c4;
+  font-size: 11px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+.dimension-value {
+  white-space: nowrap;
+  font-family: ui-monospace, 'SF Mono', monospace;
+  color: #7dd9c4;
+}
 .checkbox-field {
   display: flex;
   align-items: center;

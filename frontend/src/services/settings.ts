@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS: Settings = {
   targetFps: 10,
   jpegQuality: 0.65,
   mirrored: true,
+  model: 'objects',
 };
 
 export const DETECTION_PRESETS = {
@@ -72,6 +73,9 @@ export function loadSettings(): Settings {
           ? saved.jpegQuality
           : 0.65,
       mirrored: typeof saved.mirrored === 'boolean' ? saved.mirrored : true,
+      // Model availability belongs to the connected backend. Start in the
+      // default mode; let the user select installed models after connecting.
+      model: 'objects',
     };
   } catch (error) {
     console.warn('Could not restore Vision Studio settings:', error);

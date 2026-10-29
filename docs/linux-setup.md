@@ -2,21 +2,22 @@
 
 ## Prepare an isolated CPU environment
 
-Copy the project to `~/vision-studio` as your normal Linux user. Use Python 3.10–3.12, preferably 3.12. If `venv` is missing, install Mint's `python3-venv` package through your normal package-management process. No NVIDIA driver installation or desktop login is needed.
+Clone or copy the project into a directory of your choice as your normal Linux user. Replace `/path/to/vision-studio` below with that checkout location. Use Python 3.10–3.12, preferably 3.12. If `venv` is missing, install Mint's `python3-venv` package through your normal package-management process. No NVIDIA driver installation or desktop login is needed.
 
 ```bash
-cd ~/vision-studio/backend
+cd /path/to/vision-studio/backend
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 python -m pip install -r requirements.txt
+python -m pip install -r requirements-vocabulary.txt
 cp .env.example .env
 python scripts/prepare_model.py
 python -m app
 ```
 
-The official headless Ultralytics distribution provides the same `ultralytics` import while using OpenCV without GUI libraries. See [headless installation](https://docs.ultralytics.com/quickstart/#headless-server-installation). Model preparation downloads only `yolo11n.pt` by default, a supported nano detector; [YOLO11 documentation](https://docs.ultralytics.com/models/yolo11/) describes the API. `--model yolo26n.pt` is an explicit optional choice with a recent runtime. No model is downloaded at boot. Only load weights from a trusted source.
+The official headless Ultralytics distribution provides the same `ultralytics` import while using OpenCV without GUI libraries. See [headless installation](https://docs.ultralytics.com/quickstart/#headless-server-installation). Default preparation downloads `yoloe-26n-seg.pt` and bakes in 1,203 LVIS object categories as `yoloe-26n-lvis.pt`. Install `requirements-vocabulary.txt` first; its tokenizer and the downloaded text encoder are used only during preparation. Standard YOLO11/YOLO26 and the higher-capacity YOLOE small variant are explicit options; see [detection quality and speed](detection-quality.md). Existing `.env` files retain their model path. No model is downloaded at boot. Only load weights from a trusted source.
 
 `python -m app` reads `.env`, binds `127.0.0.1:8000`, sets one worker, enforces message limits and transport flow control, and disables redundant compression. Do not use `--workers 2`, `0.0.0.0`, or an auto-reloader for the deployed service. Readiness failures appear in logs; `/health` still returns availability and `model_ready:false`.
 
@@ -33,13 +34,14 @@ Both should report `model_ready:true` after startup. `.env` controls provider, l
 
 These are instructions for review and execution on Linux; this project does not change Tailscale automatically. Tailscale must already be installed and connected on both machines. HTTPS certificates/MagicDNS must be configured for your tailnet, and access policies must permit the Mac to reach the chosen server port.
 
-First inspect and save existing state:
+First inspect and save existing state. Replace the backup path below with a
+location of your choice outside the repository:
 
 ```bash
 tailscale status
 tailscale serve status
 tailscale funnel status
-tailscale serve status --json > "$HOME/vision-studio-serve-before.json"
+tailscale serve status --json > /path/to/tailscale-serve-before.json
 ```
 
 Choose an unused HTTPS port, for example 8443. **Stop if that port has any existing Serve/Funnel handler.** A root route on an occupied port can replace another service's handler, and a Funnel-enabled port can expose routes publicly. Leave Jellyfin and other ports/paths untouched. Do not run `tailscale serve reset` or any Funnel command that enables exposure.
@@ -73,7 +75,7 @@ The default rejects missing and `null` origins. Native diagnostic clients can se
 Stop the foreground backend with Ctrl-C before installing the service. The renderer substitutes your ordinary user and the current absolute checkout paths; it only writes to standard output and never installs or starts anything.
 
 ```bash
-cd ~/vision-studio
+cd /path/to/vision-studio
 python3 deployment/render_service.py > /tmp/vision-studio.service
 cat /tmp/vision-studio.service
 systemd-analyze verify /tmp/vision-studio.service
@@ -100,10 +102,10 @@ CPU is the baseline. The MX110's presence is not proof of compatible CUDA or bet
 On Linux, explicitly install OpenVINO and export a dynamic model in the same venv:
 
 ```bash
-cd ~/vision-studio/backend
+cd /path/to/vision-studio/backend
 source .venv/bin/activate
 python -m pip install 'openvino>=2024.6,<2027'
-python scripts/prepare_model.py --openvino
+python scripts/prepare_model.py --model yolo11n.pt --openvino
 ```
 
 Dynamic export allows the resolution selector to keep working. No INT8 calibration dataset is downloaded. If the installed Ultralytics exporter requires another package, install the named compatible dependency explicitly; automatic dependency installation is disabled. See the official [OpenVINO integration](https://docs.ultralytics.com/integrations/openvino/).

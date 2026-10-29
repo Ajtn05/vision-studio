@@ -1,5 +1,5 @@
 import type { RefObject } from 'react';
-import type { DetectionResult } from '../types/detection';
+import type { DetectionResult, MeasurementCalibration } from '../types/detection';
 import { DetectionOverlay } from './DetectionOverlay';
 
 interface Props {
@@ -12,6 +12,7 @@ interface Props {
   connected: boolean;
   width: number;
   height: number;
+  calibration?: MeasurementCalibration | null;
 }
 
 export function CameraPreview(props: Props) {
@@ -34,6 +35,7 @@ export function CameraPreview(props: Props) {
           result={props.result}
           mirrored={props.mirrored}
           visible={props.active && props.connected && !props.stale}
+          calibration={props.calibration}
         />
         {!props.active && (
           <div className="camera-empty">

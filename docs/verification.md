@@ -37,10 +37,86 @@ This must be run with the actual Linux model, Mac camera permission, and tailnet
 
 No real Linux hardware benchmark, tailnet deployment, macOS camera grant, or signed/notarized distribution is implied by passing the local automated suite.
 
-## Local validation record
+## Original local validation record
 
 The implemented client passed 26 Vitest tests, strict TypeScript/production bundling, and Prettier checks. The backend passed 38 model-free pytest tests and Ruff checks. A macOS ARM64 debug `.app` compiled and opened with the technical interface; its bundled camera description and configured entitlement plists were inspected.
 
 Using the explicit test server and synthetic camera harness, the real browser capture → JPEG → binary envelope → loopback WebSocket → decode → test detector → JSON → Canvas path was exercised. Boxes matched both mirrored and unmirrored video and remained aligned after changing inference resolution. Backend stop/restart showed reconnecting while video continued, cleared results, and automatically resumed detections. Explicit camera stop/disconnect cleared measurements and released the test session. The fixture was stopped afterward.
 
-Actual Linux Mint CPU/OpenVINO inference, the private Tailscale route, macOS camera permission, and signed/notarized distribution remain hardware/deployment acceptance steps. A Starlette warning currently notes its planned TestClient HTTPX migration; it does not fail tests. No model weights or PyTorch were installed on the Mac.
+At that point, actual Linux Mint CPU/OpenVINO inference, the private Tailscale route, macOS camera permission, and signed/notarized distribution remained hardware/deployment acceptance steps. A Starlette warning noted its planned TestClient HTTPX migration; it did not fail tests. That original check did not install model weights or PyTorch on the Mac.
+
+## Detection improvements — October 29, 2026
+
+The updated backend passed 53 model-free pytest tests and Ruff lint/format
+checks. The updated frontend passed 37 Vitest tests and the TypeScript/production
+build. New coverage includes independent inference size and legacy defaults,
+capability negotiation with old/new servers, invalid overlap thresholds, bulk
+box conversion, fresh-frame sampling, FPS limits, hidden-page suspension,
+availability subscriptions, and cleanup of callbacks and late encodes.
+An initialization regression test also verifies that the requested Torch CPU
+thread limit survives Ultralytics' lazy provider initialization.
+
+Official YOLOE nano and small checkpoints were prepared with 1,203 LVIS object
+categories. Both prepared models loaded and inferred without the preparation
+tokenizer on the Python import path, on Ultralytics' public `bus.jpg` and
+`zidane.jpg` images at inference sizes 320, 640, and 960. The smoke checks verify
+the vocabulary count, nonempty valid boxes, and absence of unused decoded masks.
+These are model integration checks, not a labeled accuracy evaluation. The
+full 4,585-name prompt-free alternatives also loaded, but produced abstract
+labels, so the practical default uses the LVIS object vocabulary.
+
+The browser's synthetic camera check exercised actual Canvas capture, JPEG
+encoding, binary frames, the WebSocket, decoding, and overlay rendering. It
+received results at 640×360, 320×180, and 960×540, changed inference size
+independently, toggled mirroring, and confirmed that camera stop halted binary
+transmission. It completed without page errors. Source images were synthetic;
+this did not request access to the user's camera.
+
+## Linux CPU measurements — October 29, 2026
+
+The isolated benchmark ran on an Intel i5-8265U Linux server, using
+Ultralytics 8.4.191, CPU inference, two effective Torch threads after the fix,
+confidence 0.4, and the public `zidane.jpg` sample. Each row used 30 measured
+runs after three warmups, in addition to the adapter's startup warmup.
+
+| Model | Image bounds / inference size | Median | p95 |
+| --- | --- | --- | --- |
+| YOLO11n, before restoring the thread limit | 640×360 / 640 | 1,669.4 ms | 2,609.8 ms |
+| YOLO11n, fixed thread limit | 640×360 / 640 | 126.2 ms | 132.5 ms |
+| YOLOE-26n + LVIS, Fast sizes | 320×180 / 320 | 101.7 ms | 112.5 ms |
+| YOLOE-26n + LVIS, Balanced sizes | 640×360 / 640 | 356.9 ms | 365.1 ms |
+| YOLOE-26s + LVIS | 640×360 / 640 | 634.7 ms | 658.3 ms |
+| YOLOE-26n + LVIS, Detail sizes | 960×540 / 960 | 736.1 ms | 803.0 ms |
+
+The same-model median improved about 13.2× after restoring the CPU thread
+limit. These timings include the detector's preprocessing and box conversion,
+but exclude camera capture, JPEG encoding, network transport, and UI rendering.
+This sample is not a bounding-box accuracy benchmark, and the timing rows use
+the same confidence rather than the different preset confidence values.
+Nano is the practical default on this CPU; the small model remains an option
+when its additional capacity is worth the latency.
+
+The benchmark used an isolated temporary directory without changing the
+deployed backend's source, model selection, or Tailscale route. A production
+upgrade and restart remain separate deployment steps.
+
+## Continuous live readings (2026-10-29)
+
+The Live preset now defaults to 320 × 180 frames, 320-pixel inference, and a
+10 FPS target. Regression coverage includes 30 consecutive captures with
+playback counters frozen at zero and one, media-clock fallback, pacing after
+variable JPEG encoding time, reading age measured from capture, and recovery
+after a late result. All 47 frontend tests, TypeScript/production bundling,
+Prettier checks, and a macOS debug app build passed.
+
+The synthetic camera harness connected to the already-running real local
+YOLOE-26n/LVIS backend. After correcting send pacing, the UI reported about
+8.6 inference FPS, 39 ms frame latency, and 55 ms reading age at one sample.
+The server-drop counter did not increase between the post-fix observations.
+This checks continuous capture, JPEG encoding, inference, and result display;
+synthetic object labels do not establish recognition accuracy or webcam FPS.
+
+A separate local CPU timing check used two Torch threads, blank synthetic
+frames, two warmups per size, and ten measured calls. Median model-call time
+was 19.6 ms at 320 pixels and 68.1 ms at 640 pixels. These timings exclude
+capture, JPEG encoding, transport, and display and are not Linux-server results.

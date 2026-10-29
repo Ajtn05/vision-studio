@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { backendSocketUrl, encodeFrame, parseDetectionResult } from '../services/protocol';
+import {
+  backendSocketUrl,
+  encodeFrame,
+  parseDetectionResult,
+  parseServerInfo,
+} from '../services/protocol';
 
 export const resultMessage = {
   type: 'detections',
@@ -38,6 +43,44 @@ describe('binary protocol', () => {
       }),
     ).toThrow();
     expect(() => parseDetectionResult({ ...resultMessage, image_width: 0 })).toThrow();
+  });
+  it('validates hand landmark payloads before drawing them', () => {
+    const hand = {
+      handedness: 'Right',
+      landmarks: Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5, z: -0.1 })),
+      extended_fingers: ['thumb', 'index'],
+    };
+    const message = {
+      ...resultMessage,
+      model: 'hands',
+      objects: [{ ...resultMessage.objects[0], hand }],
+    };
+    expect(parseDetectionResult(message).objects[0].hand?.extended_fingers).toHaveLength(2);
+    for (const patch of [
+      { landmarks: hand.landmarks.slice(1) },
+      { landmarks: hand.landmarks.map((point) => ({ ...point, z: NaN })) },
+      { extended_fingers: ['index', 'index'] },
+      { handedness: 'invalid' },
+    ])
+      expect(() =>
+        parseDetectionResult({
+          ...message,
+          objects: [{ ...message.objects[0], hand: { ...hand, ...patch } }],
+        }),
+      ).toThrow();
+  });
+  it('rejects malformed or duplicate model capabilities', () => {
+    const info = {
+      model_name: 'test',
+      provider: 'cpu',
+      model_ready: true,
+      capabilities: { max_message_bytes: 1048576 },
+    };
+    expect(() =>
+      parseServerInfo({ ...info, models: [{ id: 'hands', name: 'Hands', available: 'yes' }] }),
+    ).toThrow();
+    const model = { id: 'hands', name: 'Hands', available: true };
+    expect(() => parseServerInfo({ ...info, models: [model, model] })).toThrow();
   });
 });
 

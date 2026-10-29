@@ -29,8 +29,9 @@ export function useDetectionStream(
       confidence: settings.confidence,
       resolution: settings.resolution,
       inference_size: settings.inferenceSize,
+      model: settings.model,
     });
-  }, [settings.confidence, settings.resolution, settings.inferenceSize]);
+  }, [settings.confidence, settings.resolution, settings.inferenceSize, settings.model]);
 
   useEffect(() => {
     client.current?.clearDetections();
@@ -56,6 +57,7 @@ export function useDetectionStream(
         confidence: settings.confidence,
         resolution: settings.resolution,
         inference_size: settings.inferenceSize,
+        model: settings.model,
       }),
     disconnect: () => client.current?.disconnect(),
   };

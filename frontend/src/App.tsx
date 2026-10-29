@@ -4,14 +4,19 @@ import { ConnectionStatus } from './components/ConnectionStatus';
 import { DetectionsPanel } from './components/DetectionsPanel';
 import { PerformanceStats } from './components/PerformanceStats';
 import { SettingsPanel } from './components/SettingsPanel';
+import { MeasurementPanel } from './components/MeasurementPanel';
 import { useCamera } from './hooks/useCamera';
 import { useDetectionStream } from './hooks/useDetectionStream';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from './services/settings';
-import type { Settings } from './types/detection';
+import type { MeasurementCalibration, MeasurementUnit, Settings } from './types/detection';
+import { calibrateWidth } from './utils/measurements';
 
 export default function App() {
   const [settings, setSettings] = useState(loadSettings);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [calibration, setCalibration] = useState<MeasurementCalibration | null>(null);
+  const [referenceWidth, setReferenceWidth] = useState('10');
+  const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>('cm');
   const camera = useCamera();
   const stream = useDetectionStream(camera.videoRef, camera.active, settings, camera.deviceId);
   const sessionActive = ['connected', 'connecting', 'reconnecting'].includes(stream.state);
@@ -23,6 +28,28 @@ export default function App() {
   useEffect(() => {
     setStorageError(saveSettings(settings));
   }, [settings]);
+  useEffect(() => {
+    setCalibration(null);
+  }, [
+    camera.active,
+    camera.deviceId,
+    camera.dimensions.width,
+    camera.dimensions.height,
+    settings.backendUrl,
+    settings.model,
+    stream.state,
+  ]);
+  useEffect(() => {
+    // A server can offer hands even when its optional object weights are missing.
+    if (
+      settings.model === 'objects' &&
+      stream.info?.models &&
+      !stream.info.models.some((model) => model.id === 'objects' && model.available) &&
+      stream.info.models.some((model) => model.id === 'hands' && model.available)
+    ) {
+      setSettings((previous) => ({ ...previous, model: 'hands' }));
+    }
+  }, [stream.info, settings.model]);
   const errors = [camera.error, stream.error, stream.captureError, storageError].filter(Boolean);
 
   return (
@@ -103,9 +130,27 @@ export default function App() {
               connected={stream.state === 'connected'}
               width={camera.dimensions.width}
               height={camera.dimensions.height}
+              calibration={calibration}
             />
             <PerformanceStats stream={stream} active={camera.active} count={objects.length} />
-            <DetectionsPanel objects={objects} waiting={!hasFreshResult} />
+            <DetectionsPanel
+              objects={objects}
+              waiting={!hasFreshResult}
+              mode={settings.model}
+              result={hasFreshResult ? stream.result : null}
+              calibration={calibration}
+              canCalibrate={
+                Number.isFinite(Number(referenceWidth)) &&
+                Number(referenceWidth) > 0 &&
+                Number(referenceWidth) <= 100000
+              }
+              onReference={(object) => {
+                if (hasFreshResult && stream.result)
+                  setCalibration(
+                    calibrateWidth(object, stream.result, Number(referenceWidth), measurementUnit),
+                  );
+              }}
+            />
           </div>
           <aside className="settings-column">
             <SettingsPanel
@@ -114,10 +159,28 @@ export default function App() {
               model={stream.info?.model_name}
               provider={stream.info?.provider}
               classCount={stream.info?.class_count}
+              models={stream.info?.models}
+              modelSelection={stream.info?.supported_options?.model_selection}
               independentDetail={
                 !stream.info || !!stream.info.supported_options?.inference_sizes?.length
               }
             />
+            {settings.model === 'measurement' && (
+              <MeasurementPanel
+                referenceWidth={referenceWidth}
+                unit={measurementUnit}
+                calibration={calibration}
+                updateWidth={(value) => {
+                  setReferenceWidth(value);
+                  setCalibration(null);
+                }}
+                updateUnit={(value) => {
+                  setMeasurementUnit(value);
+                  setCalibration(null);
+                }}
+                clear={() => setCalibration(null)}
+              />
+            )}
             <section className="session-panel">
               <h2>Session</h2>
               <dl>

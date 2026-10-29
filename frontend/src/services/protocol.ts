@@ -63,7 +63,30 @@ function isDetection(value: unknown): value is Detection {
     finite(value.width, 0, 1) &&
     finite(value.height, 0, 1) &&
     value.x + value.width <= 1.000001 &&
-    value.y + value.height <= 1.000001
+    value.y + value.height <= 1.000001 &&
+    (value.hand == null || isHand(value.hand))
+  );
+}
+
+function isHand(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return (
+    ['Left', 'Right'].includes(value.handedness as string) &&
+    Array.isArray(value.landmarks) &&
+    value.landmarks.length === 21 &&
+    value.landmarks.every(
+      (point) =>
+        isRecord(point) &&
+        finite(point.x, 0, 1) &&
+        finite(point.y, 0, 1) &&
+        finite(point.z, -Number.MAX_VALUE),
+    ) &&
+    Array.isArray(value.extended_fingers) &&
+    value.extended_fingers.length <= 5 &&
+    new Set(value.extended_fingers).size === value.extended_fingers.length &&
+    value.extended_fingers.every((finger) =>
+      ['thumb', 'index', 'middle', 'ring', 'pinky'].includes(finger),
+    )
   );
 }
 
@@ -84,7 +107,9 @@ export function parseDetectionResult(value: unknown): DetectionResult {
     !finite(value.image_height, 1, 720) ||
     !Array.isArray(value.objects) ||
     value.objects.length > 100 ||
-    !value.objects.every(isDetection)
+    !value.objects.every(isDetection) ||
+    (value.model !== undefined &&
+      !['objects', 'hands', 'measurement'].includes(value.model as string))
   ) {
     throw new Error(
       'The backend sent an invalid detection response. Check that both versions match.',
@@ -116,9 +141,29 @@ export function parseServerInfo(value: unknown): ServerInfo {
       (options.inference_sizes !== undefined &&
         (!Array.isArray(options.inference_sizes) ||
           !options.inference_sizes.every((size) => [320, 640, 960].includes(size)))) ||
-      (options.max_fps !== undefined && !finite(options.max_fps, 1, 60))
+      (options.max_fps !== undefined && !finite(options.max_fps, 1, 60)) ||
+      (options.model_selection !== undefined && typeof options.model_selection !== 'boolean')
     )
       throw new Error('The backend sent invalid inference capabilities.');
   }
+  if (
+    (value.active_model !== undefined &&
+      !['objects', 'hands', 'measurement'].includes(value.active_model as string)) ||
+    (value.models !== undefined &&
+      (!Array.isArray(value.models) ||
+        value.models.length > 3 ||
+        !value.models.every(
+          (model) =>
+            isRecord(model) &&
+            ['objects', 'hands', 'measurement'].includes(model.id as string) &&
+            typeof model.name === 'string' &&
+            model.name.length <= 128 &&
+            typeof model.available === 'boolean' &&
+            (model.reason == null ||
+              (typeof model.reason === 'string' && model.reason.length <= 1000)),
+        ) ||
+        new Set(value.models.map((model) => model.id)).size !== value.models.length))
+  )
+    throw new Error('The backend sent an invalid model catalog.');
   return value as unknown as ServerInfo;
 }

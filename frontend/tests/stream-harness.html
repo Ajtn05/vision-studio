@@ -10,6 +10,23 @@
     <script type="module">
       // This entry is served only by Vite development mode and is not in dist/.
       // It exercises the real capture, JPEG, socket, and Canvas paths without a webcam.
+      // Optional test-only port override leaves a running backend undisturbed.
+      const backendPort = new URL(location.href).searchParams.get('backendPort');
+      if (backendPort && /^\d{4,5}$/.test(backendPort) && Number(backendPort) <= 65535) {
+        const NativeWebSocket = window.WebSocket;
+        window.WebSocket = class extends NativeWebSocket {
+          constructor(url, protocols) {
+            const endpoint = new URL(url);
+            if (
+              endpoint.protocol === 'ws:' &&
+              ['localhost', '127.0.0.1'].includes(endpoint.hostname)
+            ) {
+              endpoint.port = backendPort;
+            }
+            super(endpoint, protocols);
+          }
+        };
+      }
       const canvas = document.createElement('canvas');
       canvas.width = 1280;
       canvas.height = 720;
