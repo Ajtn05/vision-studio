@@ -165,9 +165,83 @@ See [macOS setup](docs/macos-setup.md) for signing, permissions, and building. T
 | `backend/app/detector.py` | Small detector contract and real Ultralytics adapter |
 | `deployment/` | Reviewable service template and local renderer |
 
-Read [architecture](docs/architecture.md), [protocol](docs/protocol.md), [troubleshooting](docs/troubleshooting.md), and [verification](docs/verification.md). To add a detector, implement the attributes and `detect` method in `Detector`, then register it in the worker's model catalog and selection path. Preserve normalized detection coordinates and single-worker ownership. The test fake exists only in tests and is never selected by normal startup.
+Read [architecture](docs/architecture.md), [protocol](docs/protocol.md), [troubleshooting](docs/troubleshooting.md), and [verification](docs/verification.md). See [switching models](#switching-models) for weight changes and adding another detector implementation. The test fake exists only in tests and is never selected by normal startup.
 
 See [detection quality and speed](docs/detection-quality.md) for the Live/Balanced/Detail presets, independent inference resolution, and broader model setup. New configurations use YOLOE-26n with a baked vocabulary of 1,203 LVIS object categories. Existing `.env` files retain their selected model; the guide explains how to upgrade. A small variant is available when localization quality matters more than CPU cost.
+
+## Switching models
+
+Supported YOLO/YOLOE weight changes require preparing the weights, updating the
+backend configuration, and restarting the backend. The frontend needs no changes
+or rebuild. The selected object model serves both **Object detection** and
+**Object measurement**; **Hands & fingers** uses its separate MediaPipe model.
+The **Vision mode** selector switches tasks during a session. Changing object
+model weights requires a backend restart.
+
+### Switch to another supported checkpoint
+
+Run preparation on the computer performing inference. These are the choices in
+[`prepare_model.py`](backend/scripts/prepare_model.py):
+
+| Preparation argument (`--model`) | `VISION_MODEL_PATH` after preparation | Vocabulary |
+| --- | --- | --- |
+| `yoloe-26n-seg.pt` (default) | `models/yoloe-26n-lvis.pt` | 1,203 LVIS categories |
+| `yoloe-26s-seg.pt` | `models/yoloe-26s-lvis.pt` | 1,203 LVIS categories; higher capacity and CPU cost |
+| `yolo26n.pt` / `yolo26s.pt` | `models/yolo26n.pt` / `models/yolo26s.pt` | 80 COCO categories |
+| `yolo11n.pt` / `yolo11s.pt` | `models/yolo11n.pt` / `models/yolo11s.pt` | 80 COCO categories |
+| `yoloe-26n-seg-pf.pt` / `yoloe-26s-seg-pf.pt` | `models/yoloe-26n-seg-pf.pt` / `models/yoloe-26s-seg-pf.pt` | Optional 4,585-name exploration vocabulary |
+
+For example, to switch to the small YOLOE variant, start from the repository root.
+Use the backend environment's Python interpreter from your operating system's
+[quick start](#2-prepare-the-backend-for-your-operating-system) in place of
+`python`, or activate that environment first:
+
+```bash
+cd backend
+python -m pip install -r requirements.txt -r requirements-vocabulary.txt
+python scripts/prepare_model.py --model yoloe-26s-seg.pt
+```
+
+Edit these entries in the existing `backend/.env`, preserving other settings:
+
+```dotenv
+VISION_MODEL_PATH=models/yoloe-26s-lvis.pt
+VISION_PROVIDER=cpu
+```
+
+Stop and restart the backend using the same launch method as before (`python -m
+app` from `backend` for a manual launch, or restart its service). Existing process
+environment variables take precedence over `.env`, so update them too if set.
+Reconnect the client and check `/api/info`: `model_name` should match the selected
+weights, `model_ready` should be `true`, and the `objects` entry in `models`
+should have `available: true`. Normal startup loads local weights without
+downloading missing files.
+
+The `cpu` provider requires a local `.pt` checkpoint. For OpenVINO, prepare with
+`--openvino`, set `VISION_PROVIDER=openvino`, and set `VISION_MODEL_PATH` to the
+exported model directory printed by the script. See
+[detection quality and speed](docs/detection-quality.md) for export dependencies,
+custom YOLOE vocabularies, and benchmarking.
+
+### Use another model framework or add a task
+
+For another object detection framework, implement the
+[`Detector` interface](backend/app/detector.py): `model_name`, `provider`, and
+`detect(image, confidence, image_size)`. The input is an unmirrored BGR NumPy
+image; return `list[Detection]` with labels, confidence scores, and bounding boxes
+normalized to the input image in the range 0–1. Keeping this output contract lets
+the existing transport and object detection UI work with the new implementation.
+
+Startup currently constructs `YoloDetector` directly in
+[`InferenceWorker.start`](backend/app/inference_worker.py). Wire the new adapter
+into that startup path, or construct it and pass it through
+`create_app(detector=...)`. Preserve single-worker ownership of model loading and
+inference. There is no configuration-driven detector registry yet.
+
+A new selectable task, such as pose or depth, also needs updates to the worker's
+model catalog and selection path, protocol schemas, frontend mode types, and
+rendering for its outputs. See [architecture](docs/architecture.md) and
+[protocol](docs/protocol.md) for those boundaries.
 
 ## Vision modes
 
