@@ -48,6 +48,11 @@ also use Python 3.13 as shown below. Preparation needs internet access; normal
 inference reuses local weights. Skip environment creation if you already have a
 working environment, and preserve an existing `.env`.
 
+The commands below install dependencies and prepare both the object and hand
+models. For object detection only, skip the lines containing
+`requirements-hands.txt` and `prepare_hand_model.py`. To add hands to an existing
+installation, see [hand model installation](#install-or-add-the-hand-model).
+
 #### Linux (Bash)
 
 ```bash
@@ -57,8 +62,10 @@ python3.12 -m venv .venv
 .venv/bin/python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -m pip install -r requirements-vocabulary.txt
+.venv/bin/python -m pip install -r requirements-hands.txt
 if [ ! -f .env ]; then cp .env.example .env; fi
 .venv/bin/python scripts/prepare_model.py
+.venv/bin/python scripts/prepare_hand_model.py
 .venv/bin/python -m app
 ```
 
@@ -74,8 +81,10 @@ python3.13 -m venv .venv-mac
 .venv-mac/bin/python -m pip install torch torchvision
 .venv-mac/bin/python -m pip install -r requirements.txt
 .venv-mac/bin/python -m pip install -r requirements-vocabulary.txt
+.venv-mac/bin/python -m pip install -r requirements-hands.txt
 if [ ! -f .env ]; then cp .env.example .env; fi
 .venv-mac/bin/python scripts/prepare_model.py
+.venv-mac/bin/python scripts/prepare_hand_model.py
 .venv-mac/bin/python -m app
 ```
 
@@ -91,8 +100,10 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m pip install -r requirements-vocabulary.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-hands.txt
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 .\.venv\Scripts\python.exe scripts/prepare_model.py
+.\.venv\Scripts\python.exe scripts/prepare_hand_model.py
 .\.venv\Scripts\python.exe -m app
 ```
 
@@ -252,9 +263,15 @@ estimate raised fingers. Measurement uses the existing object detector, shows
 bounding-box dimensions in pixels, and supports a known reference width for
 approximate centimeters or inches.
 
-On the machine running the backend, enable hands from the repository root.
-Replace `python` below with the environment's interpreter from your operating
-system's quick start, or activate that environment first:
+### Install or add the hand model
+
+The quick start above includes hand model installation. For an existing backend,
+stop it before installing dependencies, then run the following from the repository
+root on the computer performing inference. A client using an external backend
+needs these steps only on the server. Use the same Python environment that runs
+the backend: replace `python` with `.venv/bin/python` on Linux,
+`.venv-mac/bin/python` on macOS, or `.\.venv\Scripts\python.exe` on Windows,
+matching the quick start, or activate your existing environment first.
 
 ```bash
 cd backend
@@ -262,8 +279,33 @@ python -m pip install -r requirements-hands.txt
 python scripts/prepare_hand_model.py
 ```
 
-Restart the backend after installation. See [vision modes and calibration](docs/vision-modes.md)
-for setup, measurement limits, and verification.
+`requirements-hands.txt` installs MediaPipe and its OpenCV dependency. The
+preparation script downloads Google's Hand Landmarker bundle to
+`backend/models/hand_landmarker.task`; it reuses the file if already present.
+Installation and the initial download need internet access. Normal startup and
+inference use the local bundle.
+
+Ensure the existing `backend/.env` contains this setting, preserving other entries:
+
+```dotenv
+VISION_HAND_MODEL_PATH=models/hand_landmarker.task
+```
+
+The hand model path is separate from `VISION_MODEL_PATH`, which selects the object
+model. For another bundle location, pass `--output` to the preparation script and
+set `VISION_HAND_MODEL_PATH` to the same path. Update any process environment
+override too, since it takes precedence over `.env`.
+
+Restart the backend with the same interpreter (`python -m app` from `backend`
+for a manual launch) or restart its service. Check `/api/info` on the backend:
+the `models` entry with `id: "hands"` must have `available: true`. Overall
+`model_ready: true` alone can mean only the object detector is ready. If hands
+remain unavailable, inspect that entry's `reason` and the backend startup logs.
+
+Reconnect the client, choose **Vision mode → Hands & fingers**, and show a hand
+to the camera to check the joint overlay and estimated finger count. See
+[vision modes and calibration](docs/vision-modes.md) for measurement limits and
+further verification.
 
 ## Tests
 
