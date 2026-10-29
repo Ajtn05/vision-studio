@@ -1,30 +1,30 @@
 # Vision Studio
 
-A readable, real-time computer vision desktop app. Your Mac renders its webcam locally; a backend on Linux or the same Mac receives sampled JPEGs and runs local YOLO/YOLOE object detection or optional MediaPipe hand landmarks. A separate Canvas draws detections, finger joints, or object measurements without slowing the preview. The interface is a compact technical control panel with explicit settings, a detection table, and measured statistics.
+A real-time computer vision web app with an optional macOS desktop shell. The client renders its webcam locally; a backend on the same computer or an external server receives sampled JPEGs and runs local YOLO/YOLOE object detection or optional MediaPipe hand landmarks. A separate Canvas draws detections, finger joints, or object measurements without slowing the preview. The interface is a compact technical control panel with explicit settings, a detection table, and measured statistics.
 
 ```text
-Mac / React + Tauri 2                         Linux Mint / FastAPI
+Client / browser                             Backend / FastAPI
 camera → local video                         serial local inference
           ↓ sampled JPEG + frame metadata    ↑
-          └──────── private WSS / Tailscale ──┘
-          Canvas ← JSON object detections
+          └──── loopback WS or private WSS ───┘
+          Canvas ← JSON detections and landmarks
 ```
 
-With the Linux backend, the Mac runs only the client and needs no Python,
-model weights, PyTorch, or OpenVINO. For Mac-only testing, the Mac runs both
-the client and the Python backend. Browser and desktop modes use the same
-application and protocol.
+The browser client uses standard web APIs and can run on Linux, macOS, or
+Windows with a compatible browser. Client and server operating systems can
+differ. Only the machine running the backend needs Python, model weights,
+and inference dependencies. The optional desktop build is configured for macOS.
 
 ## Quick start
 
-Start with the [two-mode setup guide](docs/SETUP.md):
+Choose where inference runs in the [setup guide](docs/SETUP.md):
 
-| Test mode | Backend URL in the app | Detailed guide |
+| Deployment | Backend URL in the app | Detailed guide |
 | --- | --- | --- |
-| Mac + Linux server | `wss://<server-hostname>:8443` | [Mac + server](docs/DETECTION_SERVER_SETUP.md) |
-| Mac alone, including real local inference | `ws://127.0.0.1:8000` | [Mac-only testing](docs/macos-local.md) |
+| Client + external server | `wss://<server-hostname>:8443` | [External server setup](docs/DETECTION_SERVER_SETUP.md) |
+| Client + local backend on the same computer | `ws://127.0.0.1:8000` | [Local backend setup](docs/SETUP.md#client--local-backend) |
 
-The sections below describe fresh Linux setup and the shared Mac client.
+### 1. Clone the repository
 
 Clone the repository into a directory of your choice. It contains the complete frontend, backend, desktop shell, tests, and deployment documentation.
 
@@ -35,47 +35,92 @@ git clone https://github.com/Ajtn05/vision-studio.git
 cd vision-studio
 ```
 
-Run commands from this project directory. In the guides, `/path/to/vision-studio` means your own repository location on the machine running the command. Replace `<server-hostname>` with the `.ts.net` hostname printed by Tailscale Serve. If copying source between machines, exclude `node_modules`, `.venv*`, model files, and `target`. Install dependencies separately on each machine.
+Start each setup block below from the repository root. In the guides,
+`/path/to/vision-studio` means your own repository location on that computer.
+Install dependencies separately on each machine; copy source without
+`node_modules`, `.venv*`, model files, or `target`.
 
-For a Linux backend on port **8001**, follow [the detection server setup](docs/DETECTION_SERVER_SETUP.md). The fresh-install instructions below use port 8000. [Setup overview](docs/SETUP.md) links the machine-specific guides.
+### 2. Prepare the backend for your operating system
 
-### Linux Mint: prepare and run the real backend
+Run this only on the computer performing inference, whether it is the client
+computer or an external server. Install Git and Python 3.12 first; macOS can
+also use Python 3.13 as shown below. Preparation needs internet access; normal
+inference reuses local weights. Skip environment creation if you already have a
+working environment, and preserve an existing `.env`.
 
-Use Python 3.10–3.12 (3.12 recommended) and an existing Tailscale installation. The CPU wheel command avoids downloading NVIDIA CUDA libraries. Installation and model preparation require internet access; normal operation uses local weights.
-
-```bash
-cd /path/to/vision-studio/backend
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-python -m pip install -r requirements.txt
-python -m pip install -r requirements-vocabulary.txt
-cp .env.example .env
-python scripts/prepare_model.py
-python -m app
-```
-
-In another Linux terminal:
+#### Linux (Bash)
 
 ```bash
-curl http://127.0.0.1:8000/health
-curl http://127.0.0.1:8000/api/info
-tailscale serve status
-tailscale funnel status
+cd backend
+python3.12 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements-vocabulary.txt
+if [ ! -f .env ]; then cp .env.example .env; fi
+.venv/bin/python scripts/prepare_model.py
+.venv/bin/python -m app
 ```
 
-After confirming **8443 has no existing Serve or Funnel route**, add a private route:
+See [Linux setup](docs/linux-setup.md) for package prerequisites and an optional
+systemd service.
 
-```bash
-tailscale serve --bg --https=8443 http://127.0.0.1:8000
+#### macOS (Zsh or Bash)
+
+```sh
+cd backend
+python3.13 -m venv .venv-mac
+.venv-mac/bin/python -m pip install --upgrade pip
+.venv-mac/bin/python -m pip install torch torchvision
+.venv-mac/bin/python -m pip install -r requirements.txt
+.venv-mac/bin/python -m pip install -r requirements-vocabulary.txt
+if [ ! -f .env ]; then cp .env.example .env; fi
+.venv-mac/bin/python scripts/prepare_model.py
+.venv-mac/bin/python -m app
 ```
 
-Use the HTTPS hostname printed by Serve as `wss://<that-hostname>:8443` in the app. Review [Linux setup](docs/linux-setup.md) before changing Serve or installing the systemd service. Keep the server bound to `127.0.0.1`; use one Uvicorn worker.
+Use `python3.12` if that is the installed version. See
+[macOS backend setup](docs/macos-local.md) for environment reuse and model choices.
 
-### macOS: run or build the client
+#### Windows (PowerShell)
 
-Install Node.js 22.12+ (an LTS release is recommended). Building Tauri also needs Rust stable and Xcode Command Line Tools. A prebuilt `.app` only needs macOS 12+.
+```powershell
+cd backend
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-vocabulary.txt
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+.\.venv\Scripts\python.exe scripts/prepare_model.py
+.\.venv\Scripts\python.exe -m app
+```
+
+These commands use the environment's interpreter directly, so PowerShell script
+activation is unnecessary. Linux and macOS have recorded validation in this
+repository; Windows instructions have not yet had an end-to-end project check.
+See [PyTorch installation](https://pytorch.org/get-started/locally/) for current
+platform and wheel requirements.
+
+All three paths start the backend on `127.0.0.1:8000`. Keep that terminal open.
+Open `http://127.0.0.1:8000/health` and `http://127.0.0.1:8000/api/info` on the
+backend computer and confirm `model_ready: true`. Existing `.env` files retain
+their model selection; see [model setup](docs/detection-quality.md) to change it.
+
+### 3. Connect an external server, if used
+
+For a backend on another computer, connect both devices to your Tailscale
+network and follow [external server setup](docs/DETECTION_SERVER_SETUP.md).
+Use `wss://<server-hostname>:8443` with the `.ts.net` hostname printed by Serve.
+The client currently accepts remote backends only through private Tailscale WSS;
+plain WebSockets are allowed only on loopback port 8000.
+
+For a backend on the client computer, skip Serve and use `ws://127.0.0.1:8000`.
+
+### 4. Start the browser client (Linux, macOS, or Windows)
+
+Install Node.js 22.12+ on the client computer. From the repository root in a
+separate terminal, the commands are the same in Bash, Zsh, and PowerShell:
 
 ```bash
 cd frontend
@@ -83,7 +128,16 @@ npm ci
 npm run dev
 ```
 
-Open `http://127.0.0.1:1420` for browser mode. For the desktop app:
+Open `http://127.0.0.1:1420`, enter the chosen **Backend URL**, click **Connect**,
+then **Start camera** and allow camera access. Camera capture needs localhost
+or an HTTPS page; ordinary LAN HTTP does not provide a secure camera context.
+See [browser camera requirements](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia#privacy_and_security).
+
+### Optional: macOS desktop app
+
+The desktop shell uses the same client and backend protocol. Building it needs
+Rust stable and Xcode Command Line Tools in addition to Node.js. A prebuilt
+`.app` needs macOS 12+ and a running backend. From `frontend`:
 
 ```bash
 npm run tauri -- dev
@@ -124,11 +178,12 @@ estimate raised fingers. Measurement uses the existing object detector, shows
 bounding-box dimensions in pixels, and supports a known reference width for
 approximate centimeters or inches.
 
-On the machine running the backend, enable hands with:
+On the machine running the backend, enable hands from the repository root.
+Replace `python` below with the environment's interpreter from your operating
+system's quick start, or activate that environment first:
 
 ```bash
 cd backend
-# Activate your backend environment first (.venv on Linux, .venv-mac on macOS).
 python -m pip install -r requirements-hands.txt
 python scripts/prepare_hand_model.py
 ```
@@ -147,7 +202,7 @@ npm test
 npm run build
 ```
 
-Backend tests need no model, Ultralytics, or PyTorch. On a development machine with Python:
+Backend tests need no model, Ultralytics, or PyTorch. In Bash or Zsh:
 
 ```bash
 cd backend
@@ -157,6 +212,9 @@ python -m pip install -r requirements-test.txt
 python -m pytest -q
 python -m ruff check app tests scripts
 ```
+
+In PowerShell, create the test environment with `py -3.12 -m venv .venv-test`
+and use `.\.venv-test\Scripts\python.exe` for the pip, pytest, and Ruff commands.
 
 See [verification](docs/verification.md) for the synthetic fixture, real camera
 acceptance steps, and measured CPU results on the i5-8265U server. OpenVINO and

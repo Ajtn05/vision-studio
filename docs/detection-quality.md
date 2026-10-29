@@ -37,13 +37,14 @@ Supported preparation choices:
 | `yolo11n.pt`, `yolo11s.pt` | Compatibility with existing YOLO11 installations |
 
 Prepare the chosen weights on the machine running the backend, from `backend`.
-These commands use the Linux `.venv`; for Mac-only testing, use
-`.venv-mac/bin/python` as shown in the [Mac guide](macos-local.md):
+In the commands below, use the environment's Python interpreter from your
+operating system's [quick start](../README.md#2-prepare-the-backend-for-your-operating-system)
+in place of `python`, or activate that environment first:
 
 ```bash
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m pip install -r requirements-vocabulary.txt
-.venv/bin/python scripts/prepare_model.py
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-vocabulary.txt
+python scripts/prepare_model.py
 ```
 
 Change only the model line in the existing `.env`, preserving origins and other
@@ -124,10 +125,13 @@ frame-size-based inference, and disables the separate inference-size control.
 
 Use the same image, thread count, and sizes when comparing weights/providers:
 
+The multiline examples below use Bash/Zsh continuations. In PowerShell, put
+each command on one line and use your backend environment's interpreter.
+
 ```bash
-.venv/bin/python scripts/benchmark.py /path/to/sample.jpg \
+python scripts/benchmark.py /path/to/sample.jpg \
   --model models/yoloe-26n-lvis.pt --size 640 --inference-size 640 --runs 30
-.venv/bin/python scripts/benchmark.py /path/to/sample.jpg \
+python scripts/benchmark.py /path/to/sample.jpg \
   --model models/yoloe-26s-lvis.pt --size 640 --inference-size 640 --runs 30
 ```
 

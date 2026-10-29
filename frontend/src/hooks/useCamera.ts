@@ -82,7 +82,7 @@ export function useCamera() {
         const name = (error as DOMException).name;
         setError(
           name === 'NotAllowedError'
-            ? 'Camera access was denied. Allow Vision Studio in System Settings → Privacy & Security → Camera, then try again.'
+            ? 'Camera access was denied. Allow camera access in your browser and operating system privacy settings, then try again.'
             : name === 'NotReadableError'
               ? 'The camera is in use or unavailable. Close other camera apps and try again.'
               : name === 'NotFoundError' || name === 'OverconstrainedError'

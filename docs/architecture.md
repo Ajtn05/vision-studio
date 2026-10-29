@@ -2,10 +2,11 @@
 
 ## Two independent programs
 
-The Mac owns the camera, local video element, settings, and Canvas. React does not render video frames: MediaDevices attaches a stream directly to `<video>`. Capture wakes when the socket can accept a frame and the sampling interval has elapsed. It checks decoded frame counts, waits with video-frame callbacks when needed, and falls back to animation callbacks. A reused offscreen Canvas preserves aspect ratio and encodes JPEGs asynchronously. Encoding does not alter the displayed video.
+The client owns the camera, local video element, settings, and Canvas. Browser mode uses standard web APIs on Linux, macOS, or Windows; the optional native shell is configured for macOS. React does not render video frames: MediaDevices attaches a stream directly to `<video>`. Capture wakes when the socket can accept a frame and the sampling interval has elapsed. It checks decoded frame counts, waits with video-frame callbacks when needed, and falls back to animation callbacks. A reused offscreen Canvas preserves aspect ratio and encodes JPEGs asynchronously. Encoding does not alter the displayed video.
 
-The backend owns all machine learning. It can run on the Linux server over
-private WSS or on the same Mac over loopback `ws://127.0.0.1:8000`. FastAPI loads
+The backend owns all machine learning. It can run on an external server over
+private Tailscale WSS or on the client computer over loopback
+`ws://127.0.0.1:8000`. Client and server operating systems can differ. FastAPI loads
 the configured object detector and any installed optional hand detector during
 startup, including synthetic warmups to initialize lazy provider code. A missing
 or broken local model is logged; `/health` and `/api/info` remain available with

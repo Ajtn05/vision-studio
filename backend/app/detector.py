@@ -23,7 +23,7 @@ class YoloDetector:
         # Loading only local weights prevents surprise downloads during boot.
         if not config.model_path.exists():
             raise FileNotFoundError(
-                f"Model missing: {config.model_path}. Run scripts/prepare_model.py on Linux first."
+                f"Model missing: {config.model_path}. Run scripts/prepare_model.py on the backend computer first."
             )
         if config.provider == "openvino" and not config.model_path.is_dir():
             raise ValueError("OpenVINO requires a previously exported model directory")

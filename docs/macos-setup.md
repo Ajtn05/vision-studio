@@ -1,11 +1,14 @@
-# macOS client: local or server backend
+# Optional macOS desktop client
 
-The Mac client works with either backend. Choose one before connecting:
+This guide covers the macOS desktop shell, builds, and camera permissions.
+For the browser client on Linux, macOS, or Windows, use the shared
+[quick start](../README.md#4-start-the-browser-client-linux-macos-or-windows).
+The desktop client works with either deployment:
 
 | Where detection runs | Backend URL | Instructions |
 | --- | --- | --- |
-| This Mac | `ws://127.0.0.1:8000` | [Mac-only backend setup](macos-local.md) |
-| Linux server | `wss://<server-hostname>:8443` | [Mac + server setup](DETECTION_SERVER_SETUP.md) |
+| Local backend | `ws://127.0.0.1:8000` | [macOS backend setup](macos-local.md) |
+| External server | `wss://<server-hostname>:8443` | [External server setup](DETECTION_SERVER_SETUP.md) |
 
 Replace `<server-hostname>` with the `.ts.net` hostname printed by Tailscale
 Serve on your server. Run the development commands from your own clone of
@@ -34,7 +37,7 @@ npm run dev
 Open `http://127.0.0.1:1420`. The dev server listens only on loopback. The backend allowlist must contain this exact origin. `http://localhost:1420` is also allowed by the example, but an origin with another port is different. A remote browser requires HTTPS for MediaDevices; ordinary LAN HTTP is not a secure camera context.
 
 The Mac needs Python, PyTorch, and weights when it also runs the local backend.
-When connecting to Linux, client use and frontend development need no Mac ML
+When connecting to an external server, client use and frontend development need no Mac ML
 installation. The native app bundle contains the client; the selected backend
 is always started separately.
 
@@ -67,11 +70,11 @@ The native capability grants no Rust/plugin permissions because this MVP uses br
 
 The production CSP permits WSS only to `*.ts.net` and allows plain WS only to `localhost:8000` and `127.0.0.1:8000`. The client additionally rejects remote non-Tailscale hosts and insecure remote URLs. No global `connect-src *`, native network permission, remote script, remote font, or TLS bypass is used. For a deployment restricted to one tailnet server, replace the `wss://*.ts.net:*` CSP entry with that exact hostname/port before building. The development CSP adds only the local Vite HMR socket.
 
-Packaged macOS pages use the `tauri://localhost` origin, which must be explicitly present in the selected backend's WebSocket allowlist, whether that backend runs on the Mac or Linux. Confirm the actual origin in backend rejection logs if using a different platform or custom scheme; do not allow `null` or wildcard origins to work around it.
+Packaged macOS pages use the `tauri://localhost` origin, which must be explicitly present in the selected backend's WebSocket allowlist, whether that backend runs locally or on an external server. Confirm the actual origin in backend rejection logs if using a different platform or custom scheme; do not allow `null` or wildcard origins to work around it.
 
 ## Using the workspace
 
-1. Start and verify the chosen backend. For Linux, connect both machines to the same tailnet; for Mac-only testing, start the local Python backend.
+1. Start and verify the chosen backend. For an external server, connect both machines to the same tailnet; for a local backend, start Python inference on this computer.
 2. Paste its Backend URL from the table above. Click Disconnect before changing a saved URL.
 3. Click Connect. The model name/provider appear only after a real configuration acknowledgement.
 4. Start camera; select a built-in/external camera if needed. The video is local even if the server is disconnected.

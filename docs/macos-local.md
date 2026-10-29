@@ -1,9 +1,11 @@
-# Mac-only testing: client and detection backend on one Mac
+# macOS backend setup
 
-The Mac runs both independent programs: the camera/interface on frontend port
-1420 and the real detection backend on loopback port 8000. No Linux connection
-or Tailscale route is needed. The adapter currently uses PyTorch CPU inference,
-including on Apple Silicon.
+Use this guide to prepare the inference backend on macOS. The local example
+below runs both programs on one computer: the browser client on port 1420 and
+the backend on loopback port 8000. A local backend needs no Tailscale route.
+The same backend can serve an [external client](DETECTION_SERVER_SETUP.md),
+which can use a different operating system. The adapter uses PyTorch CPU
+inference, including on Apple Silicon.
 
 ```text
 Mac camera → local video
@@ -11,7 +13,7 @@ Mac camera → local video
 Mac Python backend → local model → labels and boxes → Mac overlay
 ```
 
-## 1. Reuse the existing checkout, environment, and weights
+## 1. Check an existing environment and weights
 
 Clone the repository into a directory of your choice. Replace
 `/path/to/vision-studio` below with your checkout location. If you have already
@@ -28,7 +30,7 @@ If `.venv-mac` and the prepared model exist and these checks succeed, continue
 with step 3. Otherwise, complete step 2. Use the explicit venv
 interpreter: the Mac's default `python3` can be a different version.
 
-## 2. First-time setup on another Mac, or a missing environment/model
+## 2. First-time backend setup
 
 Use Node.js 22.12+ for the frontend and a native Python 3.12 or 3.13 for the
 backend. Local backend validation used Python 3.13. Install the chosen Python
@@ -106,7 +108,7 @@ lsof -nP -iTCP:8000 -sTCP:LISTEN
 Reuse an already healthy Vision Studio process or stop the process you started
 before restarting it. Identify unrelated programs before changing them.
 
-## 4. Start the Mac client — terminal 2
+## 4. Start the browser client for local testing — terminal 2
 
 Install frontend dependencies once, or after their lockfile changes:
 
@@ -153,10 +155,10 @@ Zero detections in an empty scene are valid; a smooth preview alone does not
 prove that inference is connected. Check the backend terminal if readiness is
 false, and check **Backend URL** if the app still reaches the remote model.
 
-To use Linux again, **Disconnect**, change the URL to
+To use an external server, **Disconnect**, change the URL to
 `wss://<server-hostname>:8443`, then **Connect**. Replace `<server-hostname>`
 with the `.ts.net` hostname printed by Tailscale Serve. Start and verify
-the Linux backend using the [Mac + server guide](DETECTION_SERVER_SETUP.md).
+the external backend using the [external server guide](DETECTION_SERVER_SETUP.md).
 The two backends have independent model selections, environments, and ports.
 
 When finished, stop camera, disconnect, and use Ctrl-C in the local backend

@@ -1,1 +1,1 @@
-"""Vision Studio's Linux inference server."""
+"""Vision Studio's local inference server."""

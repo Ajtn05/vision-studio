@@ -13,8 +13,8 @@ All modes share the existing single inference worker and one-frame limit.
 
 ## Enable hands
 
-Install on the machine running inference. A Mac using a Linux server needs no
-additional client dependencies. In the backend directory, with its virtual
+Install on the machine running inference. A client using an external server
+needs no additional inference dependencies. In the backend directory, with its virtual
 environment activated:
 
 ```bash

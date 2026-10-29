@@ -1,13 +1,15 @@
-# Detection backend on Linux Mint, app on Mac
+# External server and client
 
-Use this guide to run the Vision Studio backend on Linux and connect the Mac
-client through private Tailscale WSS. Clone the repository into a directory of
-your choice on each machine.
+Run the inference backend on an external computer and connect a browser client
+through private Tailscale WSS. Client and server are roles; their operating
+systems can differ. Use the [quick start](../README.md#quick-start) for Linux,
+macOS, or Windows dependency commands. The [setup overview](SETUP.md) also
+covers a backend on the client computer.
 
-This is the **Mac + server** path. For both programs on the Mac, use
-[Mac-only testing](macos-local.md). The [setup overview](SETUP.md) has short
-everyday startup commands for both modes. Complete steps 1–2 below for a fresh
-installation or an update; steps 3–5 are the normal server testing flow.
+```text
+Client browser -- private WSS / Tailscale --> External server --> Inference
+  camera, preview, controls                    FastAPI, local model weights
+```
 
 ## Example paths and addresses
 
@@ -15,115 +17,42 @@ Replace the placeholders before running commands:
 
 | Placeholder | Meaning |
 | --- | --- |
-| `/path/to/vision-studio` | Your repository location on the machine running the command; the Mac and Linux locations can differ |
-| `<server-ssh-host>` | Your Linux server's SSH address or configured SSH alias |
-| `<server-hostname>` | The `.ts.net` hostname printed by Tailscale Serve on Linux |
+| `/path/to/vision-studio` | Your repository location on the machine running the command; use your own path and shell syntax on Windows |
+| `<server-ssh-host>` | Your server's SSH address or configured alias, if using SSH |
+| `<server-hostname>` | The `.ts.net` hostname printed by Tailscale Serve on the server |
 
-The complete frontend, backend, Tauri shell, tests, and documentation live in
-the repository. Each machine keeps its own virtual environment, configuration,
-and model files. This guide uses backend port **8001**, which can be useful
-when another service occupies 8000. The [fresh Linux guide](linux-setup.md)
-uses 8000; keep the chosen backend port consistent throughout your setup.
-
-| Component | Machine | Address |
+| Component | Location | Address |
 | --- | --- | --- |
-| Detection model and FastAPI/WebSocket server | Linux Mint | `127.0.0.1:8001` on the server |
-| Private Tailscale Serve route | Linux Mint | HTTPS/WSS port `8443`, forwarding to server port `8001` |
-| Complete frontend | Mac | `http://127.0.0.1:1420` in browser development mode |
+| Inference backend | External server | `127.0.0.1:8000` on the server |
+| Private Tailscale Serve route | External server | HTTPS/WSS port `8443`, forwarding to backend port `8000` |
+| Browser client | Client computer | `http://127.0.0.1:1420` in development mode |
 
-The example connection is:
+The complete application is in the repository. Keep native environments, `.env`,
+and model files on their own computer. The client needs no inference packages.
+The backend does not need a webcam or a desktop login to process client frames.
 
-```text
-Mac client -- WSS over Tailscale --> Linux server:8443 --> FastAPI:8001
-```
+## 1. Prepare or update the backend
 
-After configuring Serve, use this **Backend URL** with your server hostname:
-
-```text
-wss://<server-hostname>:8443
-```
-
-The app appends `/ws/detect` automatically. Keep Tailscale connected on both
-machines. A Serve route created with `--bg` persists after the application
-terminals close; the detection backend still needs to be running.
-
-## 1. Copy matching backend changes (Mac end)
-
-Clone the repository on Linux before the first transfer. Run on the Mac to
-copy backend updates, replacing the destination path with the Linux checkout
-location:
+Open a terminal on the server, directly or through SSH if configured:
 
 ```sh
-cd /path/to/vision-studio
-rsync -av --exclude='.venv*/' --exclude='__pycache__/' \
-  --exclude='.env' --exclude='models/' \
-  backend/ '<server-ssh-host>:/path/to/vision-studio/backend/'
+ssh '<server-ssh-host>'
 ```
 
-The server keeps its own virtual environment, configuration, and model files.
+Clone the repository on that server and follow its operating system's backend
+[quick-start commands](../README.md#2-prepare-the-backend-for-your-operating-system).
+For an update, deploy the matching source revision and install requirements
+only when they change. Reuse a working environment and preserve `.env`.
 
-For the broader YOLOE vocabulary and independent inference-size control, copy
-the updated source, then follow [detection quality and speed](detection-quality.md)
-on Linux to prepare the selected weights and change `VISION_MODEL_PATH` in the
-existing `.env`. Restart the detection process after the update. Copying source
-alone preserves the previously selected model. The updated Mac client also
-continues to connect to older backends, with separate inference-size control
-disabled until the backend is upgraded.
+Prepare the selected weights on the server, or transfer an already-prepared
+`.pt` file from another computer into `backend/models`. Prepared weights can be
+reused across machines; native Python environments and packages cannot. See
+[detection quality and speed](detection-quality.md) for broad-vocabulary setup,
+model choices, and one-time preparation dependencies. Normal startup performs
+no downloads.
 
-## 2. Prepare dependencies if needed (Linux server end)
-
-From a Mac terminal, open the server session with `ssh '<server-ssh-host>'`.
-Run the following **inside that Linux session** for a new backend environment.
-Use Python 3.12; if a working `.venv` already exists, skip its creation and
-update packages only when requirements have changed:
-
-```sh
-cd /path/to/vision-studio/backend
-python3.12 -m venv .venv
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-.venv/bin/python -m pip install -r requirements.txt
-```
-
-For an existing `.venv`, only update packages when requirements have changed.
-Create `.env` only if it does not already exist:
-
-```sh
-if [ ! -f .env ]; then cp .env.example .env; fi
-```
-
-### Choose how to obtain the prepared model
-
-**If the model is already prepared on the Mac:** run these commands in a
-**Mac terminal**, outside the SSH session, using the Linux checkout location
-for both remote paths:
-
-```sh
-cd /path/to/vision-studio
-ssh '<server-ssh-host>' 'mkdir -p /path/to/vision-studio/backend/models'
-scp backend/models/yoloe-26n-lvis.pt \
-  '<server-ssh-host>:/path/to/vision-studio/backend/models/'
-```
-
-Prepared `.pt` weights can be reused on both machines. Keep native Python
-environments and installed packages on their own machine. Copying this prepared
-file avoids installing the text encoder/tokenizer on Linux.
-
-**Alternatively, prepare on Linux:** from the backend directory in the
-**Linux SSH session**:
-
-```sh
-.venv/bin/python -m pip install -r requirements-vocabulary.txt
-.venv/bin/python scripts/prepare_model.py
-```
-
-Preparation writes `models/yoloe-26n-lvis.pt`; later starts reuse that file.
-The one-time preparation downloads are described in
-[detection quality and speed](detection-quality.md).
-
-In the **Linux SSH session**, edit `backend/.env` in your Linux checkout.
-Preserve its other values and set these entries to select the broad model
-persistently:
+To select the broad model, edit these values in the server's `backend/.env`,
+preserving its other settings:
 
 ```dotenv
 VISION_MODEL_PATH=models/yoloe-26n-lvis.pt
@@ -132,108 +61,126 @@ VISION_CPU_THREADS=2
 VISION_NMS_IOU=0.5
 ```
 
-Keep the existing explicit origins for the browser and desktop app. To test
-the original 80-class model instead, set `VISION_MODEL_PATH=models/yolo11n.pt`.
-Copying source or weights alone does not change an existing `.env` selection.
+Copying source or weights alone does not change an existing model selection.
+The original 80-class model can be selected with
+`VISION_MODEL_PATH=models/yolo11n.pt` if its weights are present.
 
-## 3. Run the detection backend (Linux server end)
+## 2. Run and verify the backend
 
-Run **inside the Linux SSH session**, from the backend directory:
+From the server's `backend` directory, use its environment's interpreter:
 
-```sh
-cd /path/to/vision-studio/backend
-.venv/bin/python -m uvicorn app.main:app --env-file .env \
-  --host 127.0.0.1 --port 8001 --workers 1 \
-  --ws websockets-sansio --ws-max-size 1048576 \
-  --ws-per-message-deflate false --timeout-graceful-shutdown 20
-```
+| Server system | Start command |
+| --- | --- |
+| Linux | `.venv/bin/python -m app` |
+| macOS | `.venv-mac/bin/python -m app` |
+| Windows PowerShell | `.\.venv\Scripts\python.exe -m app` |
 
-Keep the session running. If the detection backend is already healthy, reuse it.
-After changing code, dependencies, or `.env`, stop your foreground process with
-Ctrl-C and start it again. If a service manages the process, use that service's
-restart procedure instead of starting a second process on the same port.
-In another **Linux server session**, verify:
+Keep the process running. These commands bind to `127.0.0.1:8000`, use one
+worker, and enforce the project's WebSocket limits. After changing code,
+packages, or `.env`, stop the foreground process with Ctrl-C and restart it.
+If a service manages the process, restart that service instead. An optional
+systemd service is described in [Linux setup](linux-setup.md#boot-service).
 
-```sh
-curl --fail http://127.0.0.1:8001/health
-curl --fail http://127.0.0.1:8001/api/info
-```
-
-Both responses should report `model_ready: true`.
-For the expanded model, `/api/info` should also show
+On the server, open `http://127.0.0.1:8000/health` and
+`http://127.0.0.1:8000/api/info`, or request them with your terminal's HTTP tool.
+Expect `model_ready: true`. For the broad object model, info should also show
 `model_name: "yoloe-26n-lvis.pt"`, `provider: "cpu"`, and `class_count: 1203`.
-If readiness is false or the old model is shown, check this Linux terminal's
-startup logs and `.env` before opening the camera.
+Check startup logs and `.env` if the model is unavailable or unexpected.
 
-## 4. Configure or verify the private Serve route (Linux server end)
+### Alternative backend port
 
-Inspect the existing configuration **inside a Linux SSH session**. Save a local
-backup outside the repository, replacing the backup path below with a location
-of your choice:
-
-```sh
-tailscale serve status
-tailscale funnel status
-tailscale serve status --json > /path/to/tailscale-serve-before.json
-```
-
-If HTTPS port 8443 already proxies privately to `http://127.0.0.1:8001`, reuse
-the route. A normal application restart does not require recreating it. If
-8443 has any other Serve or Funnel handler, choose another unused HTTPS port
-and use that port consistently in the client URL. Preserve unrelated routes.
-
-Only when 8443 is unused, create the private route on Linux:
+If another service occupies server port 8000, use an available port such as
+8001. From `backend`, replace `python` below with the interpreter from the table
+above and run this as one line in your shell:
 
 ```sh
-tailscale serve --bg --https=8443 http://127.0.0.1:8001
+python -m uvicorn app.main:app --env-file .env --host 127.0.0.1 --port 8001 --workers 1 --ws websockets-sansio --ws-max-size 1048576 --ws-per-message-deflate false --timeout-graceful-shutdown 20
+```
+
+Then use 8001 in server health checks and the Serve proxy target below. The
+external client URL still uses the chosen Serve port, such as 8443. A backend
+on the client computer must use loopback port 8000 with the current client.
+
+## 3. Configure or verify private Tailscale Serve
+
+Install and connect [Tailscale](https://tailscale.com/docs/install) on both
+computers. HTTPS/MagicDNS and tailnet access rules must permit the client to
+reach the chosen server port. Ensure the Tailscale CLI is available on the
+server. On Windows, run Serve commands in an administrator terminal; on
+Linux or macOS, add `sudo` only if your installation requires it. See the
+[Tailscale Serve examples](https://tailscale.com/docs/reference/examples/serve).
+
+Inspect the server's existing configuration:
+
+```sh
+tailscale status
 tailscale serve status
 tailscale funnel status
 ```
 
-Add `sudo` only if your Tailscale installation requires it. Use the exact
-`.ts.net` hostname printed by Serve for `<server-hostname>`. This adds the
-detection backend for devices permitted by your tailnet access rules. See the
+Save the JSON output of `tailscale serve status --json` to a backup file outside
+the repository before changing routes. If HTTPS port 8443 already proxies
+privately to the intended backend, reuse it. An application restart does not
+require recreating the route. If 8443 has any other Serve or Funnel handler,
+choose another unused HTTPS port and use it consistently in the client URL.
+Preserve unrelated routes.
+
+Only when 8443 is unused, create the private route on the server:
+
+```sh
+tailscale serve --bg --https=8443 http://127.0.0.1:8000
+tailscale serve status
+tailscale funnel status
+```
+
+Use `http://127.0.0.1:8001` as the target if you chose the alternative backend
+port. Use the exact `.ts.net` hostname printed by Serve for
+`<server-hostname>`. The client currently requires private Tailscale WSS for
+external backends. Keep certificate verification enabled. See the
 [Tailscale Serve reference](https://tailscale.com/docs/reference/tailscale-cli/serve).
 
-With the backend running, verify from the **Mac**:
+With the backend running, open these URLs from the client computer and confirm
+readiness:
 
-```sh
-curl --fail 'https://<server-hostname>:8443/health'
-curl --fail 'https://<server-hostname>:8443/api/info'
+```text
+https://<server-hostname>:8443/health
+https://<server-hostname>:8443/api/info
 ```
 
-## 5. Connect the complete app (Mac end)
+A route created with `--bg` persists after application terminals close. Keep
+Tailscale connected on both computers and start the backend separately.
 
-Install frontend dependencies with `npm ci` from `frontend` on first use or
-after its lockfile changes.
+## 4. Connect the browser client
 
-Use the existing desktop app, or run browser development mode from the complete
-checkout on the Mac:
+From the repository root on the client computer, in Bash, Zsh, or PowerShell:
 
 ```sh
-cd /path/to/vision-studio/frontend
+cd frontend
+npm ci
 npm run dev
 ```
 
-Open `http://127.0.0.1:1420`, enter
-`wss://<server-hostname>:8443` in **Backend URL**, and click **Connect**.
-The app should display the ready model and provider before starting the camera.
-For desktop development, stop standalone Vite and
-run `npm run tauri -- dev` instead; keep the Linux backend running separately.
+Install dependencies on first use or after the lockfile changes. Open
+`http://127.0.0.1:1420`, enter `wss://<server-hostname>:8443` in **Backend URL**,
+and click **Connect**. Confirm the intended model and provider before clicking
+**Start camera** and granting access. The client appends `/ws/detect`
+automatically. The camera and preview remain on the client computer.
 
-For browser mode, configure the server's `VISION_ALLOWED_ORIGINS` to include
-`http://127.0.0.1:1420` and `http://localhost:1420`. The desktop app uses
-`tauri://localhost`, also included in the example configuration. Keep
-these exact origins when editing `.env`, and restart the backend after changes.
+For browser development, the server's `VISION_ALLOWED_ORIGINS` must include
+`http://127.0.0.1:1420` and/or `http://localhost:1420`, matching the page you
+open. A hosted browser client needs HTTPS and its exact origin in the allowlist;
+ordinary LAN HTTP cannot access the camera. The optional macOS desktop client
+uses `tauri://localhost`. These development/desktop origins are included in the
+example configuration. Restart the backend after editing `.env`.
 
-## Switch to Mac-only testing or finish
+## Switch to a local backend or finish
 
-To test without the server, start the [local Mac backend](macos-local.md),
-click **Disconnect**, and change **Backend URL** to `ws://127.0.0.1:8000` before
-connecting again. The URL is saved, so check it when returning to server mode.
-Mac port 8000 and Linux port 8000 are on different machines; only the local
-machine's port can conflict with its own processes.
+To run inference on the client computer instead, follow
+[local backend setup](SETUP.md#client--local-backend), click **Disconnect**, and
+change **Backend URL** to `ws://127.0.0.1:8000` before reconnecting. The app saves
+this URL, so check it when switching deployments. Each backend has independent
+model selection and configuration.
 
-Stop the camera and disconnect at the end of a test. Ctrl-C stops a foreground
-frontend/backend. The saved Tailscale Serve route continues to exist; its
-presence does not mean the detection backend is running.
+Stop the camera and disconnect when finished. Ctrl-C stops a foreground client
+or backend process. A saved Serve route can remain present while its backend
+is stopped; verify model readiness when starting the next session.

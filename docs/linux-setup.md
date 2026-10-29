@@ -1,12 +1,16 @@
-# Linux Mint server
+# Linux backend and optional systemd service
 
 ## Prepare an isolated CPU environment
 
-Clone or copy the project into a directory of your choice as your normal Linux user. Replace `/path/to/vision-studio` below with that checkout location. Use Python 3.10–3.12, preferably 3.12. If `venv` is missing, install Mint's `python3-venv` package through your normal package-management process. No NVIDIA driver installation or desktop login is needed.
+This guide covers Linux dependencies and service management. The Linux backend
+can serve a browser client on any operating system, or run on the client
+computer itself. See [setup](SETUP.md) to choose a deployment.
+
+Clone or copy the project into a directory of your choice as your normal Linux user. Replace `/path/to/vision-studio` below with that checkout location. Use Python 3.12. If `venv` is missing on Mint/Ubuntu, install the venv package matching that Python version through your normal package-management process. No NVIDIA driver installation or desktop login is needed.
 
 ```bash
 cd /path/to/vision-studio/backend
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
@@ -32,7 +36,7 @@ Both should report `model_ready:true` after startup. `.env` controls provider, l
 
 ## Private Tailscale Serve, preserving existing routes
 
-These are instructions for review and execution on Linux; this project does not change Tailscale automatically. Tailscale must already be installed and connected on both machines. HTTPS certificates/MagicDNS must be configured for your tailnet, and access policies must permit the Mac to reach the chosen server port.
+Use this section when the Linux backend serves an external client. These commands run on the backend computer; this project does not change Tailscale automatically. Tailscale must already be installed and connected on both machines. HTTPS certificates/MagicDNS must be configured for your tailnet, and access policies must permit the client to reach the chosen server port.
 
 First inspect and save existing state. Replace the backup path below with a
 location of your choice outside the repository:
@@ -54,7 +58,7 @@ tailscale serve status
 tailscale funnel status
 ```
 
-Add `sudo` only if your Tailscale installation requires it. `--bg` persists the route through tailscaled. Use the exact `.ts.net` hostname printed in the command output; do not guess one from the Linux desktop hostname. On the Mac, test:
+Add `sudo` only if your Tailscale installation requires it. `--bg` persists the route through tailscaled. Use the exact `.ts.net` hostname printed in the command output; do not guess one from the Linux desktop hostname. From the client computer, open the health URL in a browser or test with curl:
 
 ```bash
 curl --fail 'https://<the-hostname-from-serve>:8443/health'
