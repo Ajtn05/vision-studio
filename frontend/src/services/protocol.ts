@@ -104,5 +104,21 @@ export function parseServerInfo(value: unknown): ServerInfo {
   ) {
     throw new Error('The backend sent invalid server information.');
   }
+  if (
+    value.class_count != null &&
+    (!Number.isInteger(value.class_count) || !finite(value.class_count, 1, 100_000))
+  )
+    throw new Error('The backend sent an invalid vocabulary size.');
+  if (value.supported_options !== undefined) {
+    const options = value.supported_options;
+    if (
+      !isRecord(options) ||
+      (options.inference_sizes !== undefined &&
+        (!Array.isArray(options.inference_sizes) ||
+          !options.inference_sizes.every((size) => [320, 640, 960].includes(size)))) ||
+      (options.max_fps !== undefined && !finite(options.max_fps, 1, 60))
+    )
+      throw new Error('The backend sent invalid inference capabilities.');
+  }
   return value as unknown as ServerInfo;
 }

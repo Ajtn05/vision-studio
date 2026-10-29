@@ -43,7 +43,7 @@ export function CameraPreview(props: Props) {
         {props.active && (props.stale || !props.connected || !props.result) && (
           <div className="stage-notice">
             {props.stale
-              ? 'Stale results (>2 s)'
+              ? 'Waiting for a fresh reading…'
               : !props.connected
                 ? 'Inference disconnected'
                 : 'Awaiting inference'}

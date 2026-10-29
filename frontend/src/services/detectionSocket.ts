@@ -18,6 +18,7 @@ export function emptySnapshot(): StreamSnapshot {
     inferenceFps: null,
     networkRttMs: null,
     frameLatencyMs: null,
+    readingAgeMs: null,
     droppedFrames: 0,
   };
 }
@@ -41,7 +42,7 @@ export class DetectionSocket {
   private nextFrameId = 1;
   private pending: PendingFrame | null = null;
   private lastResultId = 0;
-  private lastResultAt = 0;
+  private lastResultStarted: number | null = null;
   private completions: number[] = [];
   private openedAt = 0;
   private pingSentAt = 0;
@@ -49,6 +50,7 @@ export class DetectionSocket {
   private awaitingPong = false;
   private retries = 0;
   private snapshot = emptySnapshot();
+  private availableListeners = new Set<() => void>();
   // An async JPEG encode from an old connection must never enter a new session.
   generation = 0;
 
@@ -72,7 +74,7 @@ export class DetectionSocket {
     this.revision = 1;
     this.retries = 0;
     this.open();
-    this.timer = setInterval(() => this.tick(), 250);
+    this.timer = setInterval(() => this.tick(), 100);
   }
 
   private open(): void {
@@ -83,7 +85,7 @@ export class DetectionSocket {
     this.lastResultId = 0;
     this.nextFrameId = 1;
     this.completions = [];
-    this.lastResultAt = 0;
+    this.lastResultStarted = null;
     this.awaitingPong = false;
     this.openedAt = performance.now();
     this.publish({
@@ -93,6 +95,7 @@ export class DetectionSocket {
       inferenceFps: null,
       networkRttMs: null,
       frameLatencyMs: null,
+      readingAgeMs: null,
       info: null,
     });
     let socket: WebSocket;
@@ -106,13 +109,14 @@ export class DetectionSocket {
     socket.onopen = () => {
       if (this.socket !== socket) return;
       this.openedAt = performance.now();
-      socket.send(JSON.stringify({ type: 'configure', revision: this.revision, ...this.config }));
+      this.sendConfiguration();
       this.sendPing();
     };
     socket.onmessage = (event) => {
       if (this.socket !== socket) return;
       try {
         this.receive(event.data);
+        this.notifyAvailable();
       } catch (error) {
         this.stopWithError((error as Error).message);
       }
@@ -129,12 +133,14 @@ export class DetectionSocket {
       this.socket = null;
       this.ready = false;
       this.pending = null;
+      this.lastResultStarted = null;
       this.publish({
         result: null,
         stale: false,
         inferenceFps: null,
         networkRttMs: null,
         frameLatencyMs: null,
+        readingAgeMs: null,
       });
       if (!this.desired) return;
       if (event.code === 1008 || event.code === 1002) {
@@ -159,6 +165,19 @@ export class DetectionSocket {
     if (message.type === 'ready') {
       if (!isRecord(message.config) || message.config.revision !== this.revision) return;
       const info = parseServerInfo(message.info);
+      this.publish({ info });
+      // Negotiate the extension after a basic handshake, so current clients
+      // still connect to servers that reject unknown configuration fields.
+      if (
+        this.config.inference_size !== undefined &&
+        info.supported_options?.inference_sizes?.includes(this.config.inference_size) &&
+        message.config.inference_size !== this.config.inference_size
+      ) {
+        this.revision++;
+        this.openedAt = performance.now();
+        this.sendConfiguration();
+        return;
+      }
       this.ready = true;
       this.retries = 0;
       this.publish({ state: 'connected', error: null, info });
@@ -175,18 +194,20 @@ export class DetectionSocket {
         result.captured_at !== this.pending.capturedAt
       )
         return;
-      const age = performance.now() - this.pending.started;
+      const now = performance.now();
+      const started = this.pending.started;
+      const age = now - started;
       this.pending = null;
       if (result.frame_id <= this.lastResultId || result.revision !== this.revision) return;
       if (age > STALE_AFTER_MS) {
-        this.lastResultAt = performance.now() - STALE_AFTER_MS - 1;
-        this.publish({ result: null, stale: true, frameLatencyMs: null });
+        this.lastResultStarted = started;
+        this.publish({ result: null, stale: true, frameLatencyMs: null, readingAgeMs: age });
         return;
       }
       this.lastResultId = result.frame_id;
-      this.lastResultAt = performance.now();
-      this.completions.push(this.lastResultAt);
-      this.publish({ result, stale: false, frameLatencyMs: age, error: null });
+      this.lastResultStarted = started;
+      this.completions.push(now);
+      this.publish({ result, stale: false, frameLatencyMs: age, readingAgeMs: age, error: null });
     } else if (message.type === 'dropped') {
       if (message.frame_id === this.pending?.id) {
         this.pending = null;
@@ -211,7 +232,8 @@ export class DetectionSocket {
   configure(config: RuntimeConfig): void {
     if (
       config.confidence === this.config.confidence &&
-      config.resolution === this.config.resolution
+      config.resolution === this.config.resolution &&
+      config.inference_size === this.config.inference_size
     )
       return;
     this.config = config;
@@ -220,8 +242,36 @@ export class DetectionSocket {
     this.openedAt = performance.now();
     this.clearDetections();
     if (this.socket?.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify({ type: 'configure', revision: this.revision, ...config }));
+      this.sendConfiguration();
     }
+  }
+
+  private sendConfiguration(): void {
+    const { confidence, resolution, inference_size } = this.config;
+    const supported =
+      inference_size !== undefined &&
+      this.snapshot.info?.supported_options?.inference_sizes?.includes(inference_size);
+    this.socket?.send(
+      JSON.stringify({
+        type: 'configure',
+        revision: this.revision,
+        confidence,
+        resolution,
+        ...(supported ? { inference_size } : {}),
+      }),
+    );
+  }
+
+  subscribeAvailability(listener: () => void): () => void {
+    this.availableListeners.add(listener);
+    if (this.canSend()) listener();
+    return () => {
+      this.availableListeners.delete(listener);
+    };
+  }
+
+  private notifyAvailable(): void {
+    if (this.canSend()) this.availableListeners.forEach((listener) => listener());
   }
 
   get configurationRevision(): number {
@@ -263,9 +313,15 @@ export class DetectionSocket {
   clearDetections(): void {
     this.generation++;
     this.lastResultId = Math.max(this.lastResultId, this.pending?.id ?? 0);
-    this.lastResultAt = 0;
+    this.lastResultStarted = null;
     this.completions = [];
-    this.publish({ result: null, stale: false, inferenceFps: null, frameLatencyMs: null });
+    this.publish({
+      result: null,
+      stale: false,
+      inferenceFps: null,
+      frameLatencyMs: null,
+      readingAgeMs: null,
+    });
   }
 
   private sendPing(): void {
@@ -288,7 +344,8 @@ export class DetectionSocket {
     }
     if (now - this.pingSentAt >= 5000) this.sendPing();
     this.completions = this.completions.filter((completed) => now - completed <= 10000);
-    const stale = this.lastResultAt > 0 && now - this.lastResultAt > STALE_AFTER_MS;
+    const readingAgeMs = this.lastResultStarted === null ? null : now - this.lastResultStarted;
+    const stale = readingAgeMs !== null && readingAgeMs > STALE_AFTER_MS;
     const elapsed =
       this.completions.length >= 2 ? this.completions.at(-1)! - this.completions[0] : 0;
     const inferenceFps = stale
@@ -296,8 +353,14 @@ export class DetectionSocket {
       : elapsed > 0
         ? ((this.completions.length - 1) * 1000) / elapsed
         : null;
-    if (stale !== this.snapshot.stale || inferenceFps !== this.snapshot.inferenceFps)
-      this.publish({ stale, inferenceFps });
+    if (
+      stale !== this.snapshot.stale ||
+      inferenceFps !== this.snapshot.inferenceFps ||
+      readingAgeMs !== this.snapshot.readingAgeMs
+    )
+      this.publish({ stale, inferenceFps, readingAgeMs });
+    // Recover if the browser's send buffer cleared after the last response.
+    this.notifyAvailable();
   }
 
   private stopWithError(error: string): void {

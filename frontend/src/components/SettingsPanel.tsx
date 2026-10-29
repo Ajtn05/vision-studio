@@ -1,15 +1,20 @@
 import type { Settings } from '../types/detection';
+import { DETECTION_PRESETS } from '../services/settings';
 
 export function SettingsPanel({
   settings,
   update,
   model,
   provider,
+  independentDetail = true,
+  classCount,
 }: {
   settings: Settings;
   update: (patch: Partial<Settings>) => void;
   model?: string;
   provider?: string;
+  independentDetail?: boolean;
+  classCount?: number | null;
 }) {
   return (
     <section className="settings-panel">
@@ -24,7 +29,22 @@ export function SettingsPanel({
             <dt>Provider</dt>
             <dd>{provider ?? '—'}</dd>
           </div>
+          <div>
+            <dt>Vocabulary</dt>
+            <dd>{classCount ? `${classCount.toLocaleString()} classes` : '—'}</dd>
+          </div>
         </dl>
+        <div className="preset-buttons" aria-label="Detection presets">
+          {Object.entries(DETECTION_PRESETS).map(([name, preset]) => (
+            <button type="button" key={name} onClick={() => update(preset)}>
+              {name}
+            </button>
+          ))}
+        </div>
+        <p className="field-help">
+          Live continuously reads the newest camera frame as fast as the server allows, up to 10
+          FPS. Detail favors small objects and takes longer between readings.
+        </p>
         <label className="field range-field">
           <span>
             Confidence<output>{settings.confidence.toFixed(2)}</output>
@@ -39,7 +59,26 @@ export function SettingsPanel({
           />
         </label>
         <label className="field">
-          <span>Frame size</span>
+          <span>Inference size</span>
+          <select
+            value={settings.inferenceSize}
+            disabled={!independentDetail}
+            onChange={(event) =>
+              update({ inferenceSize: Number(event.target.value) as Settings['inferenceSize'] })
+            }
+          >
+            <option value={320}>320 · Fast</option>
+            <option value={640}>640 · Balanced</option>
+            <option value={960}>960 · Detail</option>
+          </select>
+          <small>
+            {independentDetail
+              ? 'Larger inputs can find smaller objects; processing takes longer. Use a larger frame size to retain source detail.'
+              : 'Update the backend to control inference size separately. This server uses frame size.'}
+          </small>
+        </label>
+        <label className="field">
+          <span>Transmitted frame size</span>
           <select
             value={settings.resolution}
             onChange={(event) =>

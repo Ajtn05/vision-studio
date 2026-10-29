@@ -356,6 +356,24 @@ main {
 .field select {
   width: 100%;
 }
+.preset-buttons {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.preset-buttons button {
+  flex: 1;
+  padding: 5px 8px;
+}
+.field-help,
+.field small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.field-help {
+  margin-bottom: 18px;
+}
 .checkbox-field {
   display: flex;
   align-items: center;

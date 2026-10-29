@@ -113,6 +113,10 @@ export default function App() {
               update={update}
               model={stream.info?.model_name}
               provider={stream.info?.provider}
+              classCount={stream.info?.class_count}
+              independentDetail={
+                !stream.info || !!stream.info.supported_options?.inference_sizes?.length
+              }
             />
             <section className="session-panel">
               <h2>Session</h2>
@@ -131,7 +135,17 @@ export default function App() {
                 </div>
                 <div>
                   <dt>Results</dt>
-                  <dd>{stream.stale ? 'Stale' : hasFreshResult ? 'Current' : 'None'}</dd>
+                  <dd>
+                    {stream.stale ? 'Waiting for fresh reading' : hasFreshResult ? 'Live' : 'None'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Reading age</dt>
+                  <dd>
+                    {camera.active && stream.readingAgeMs !== null
+                      ? `${Math.round(stream.readingAgeMs)} ms`
+                      : '—'}
+                  </dd>
                 </div>
               </dl>
               <button

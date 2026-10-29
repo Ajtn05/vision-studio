@@ -143,6 +143,39 @@ describe('detection session', () => {
     expect(snapshot.stale).toBe(true);
     expect(snapshot.inferenceFps).toBe(0);
   });
+  it('measures reading age from capture, including processing and time on screen', () => {
+    ready();
+    send();
+    now += 1500;
+    current().receive(result);
+    expect(snapshot.readingAgeMs).toBe(1500);
+    expect(snapshot.stale).toBe(false);
+    now += 400;
+    vi.advanceTimersByTime(100);
+    expect(snapshot.readingAgeMs).toBe(1900);
+    expect(snapshot.stale).toBe(false);
+    now += 200;
+    vi.advanceTimersByTime(100);
+    expect(snapshot.readingAgeMs).toBe(2100);
+    expect(snapshot.stale).toBe(true);
+  });
+  it('continuously releases capacity for new readings and recovers from a late result', () => {
+    ready();
+    send();
+    now += 2100;
+    current().receive(result);
+    expect(snapshot.stale).toBe(true);
+    for (let frame = 2; frame <= 30; frame++) {
+      expect(send()).toBe(true);
+      now += 50;
+      current().receive({ ...result, frame_id: frame });
+      expect(snapshot.result?.frame_id).toBe(frame);
+      expect(snapshot.stale).toBe(false);
+      expect(snapshot.readingAgeMs).toBe(50);
+    }
+    client.clearDetections();
+    expect(snapshot.readingAgeMs).toBeNull();
+  });
   it('measures ping RTT only for the matching nonce', () => {
     ready();
     now += 25;
@@ -179,5 +212,48 @@ describe('detection session', () => {
     ready();
     current().bufferedAmount = 10;
     expect(send()).toBe(false);
+  });
+  it('negotiates independent inference size only after capability discovery', () => {
+    client.connect('ws://localhost:8000', { ...config, inference_size: 960 });
+    current().open();
+    expect(JSON.parse(current().sent[0] as string)).not.toHaveProperty('inference_size');
+    const info = {
+      model_name: 'broad-model',
+      provider: 'cpu',
+      model_ready: true,
+      class_count: 4585,
+      capabilities: { max_message_bytes: 1048576 },
+      supported_options: { inference_sizes: [320, 640, 960] },
+    };
+    current().receive({ type: 'ready', config: { revision: 1 }, info });
+    expect(client.canSend()).toBe(false);
+    expect(JSON.parse(current().sent.at(-1) as string)).toMatchObject({
+      type: 'configure',
+      revision: 2,
+      inference_size: 960,
+    });
+    current().receive({ type: 'ready', config: { revision: 2, inference_size: 960 }, info });
+    expect(client.canSend()).toBe(true);
+    expect(snapshot.info?.class_count).toBe(4585);
+  });
+  it('keeps connecting to legacy servers without sending an unsupported field', () => {
+    client.connect('ws://localhost:8000', { ...config, inference_size: 960 });
+    ready();
+    expect(client.canSend()).toBe(true);
+    client.configure({ ...config, inference_size: 320 });
+    expect(JSON.parse(current().sent.at(-1) as string)).not.toHaveProperty('inference_size');
+  });
+  it('wakes capture when a stale camera result releases the pending slot', () => {
+    const available = vi.fn();
+    const unsubscribe = client.subscribeAvailability(available);
+    ready();
+    expect(available).toHaveBeenCalledTimes(1);
+    send();
+    client.clearDetections();
+    current().receive(result);
+    expect(available).toHaveBeenCalledTimes(2);
+    unsubscribe();
+    vi.advanceTimersByTime(250);
+    expect(available).toHaveBeenCalledTimes(2);
   });
 });
