@@ -19,12 +19,14 @@ class FakeDetector:
 
     def __init__(self) -> None:
         self.calls = 0
+        self.image_sizes: list[int] = []
         self.entered = threading.Event()
         self.release = threading.Event()
         self.release.set()
 
     def detect(self, image, confidence: float, image_size: int) -> list[Detection]:
         self.calls += 1
+        self.image_sizes.append(image_size)
         self.entered.set()
         if not self.release.wait(timeout=3):
             raise RuntimeError("Test did not release the fake detector")

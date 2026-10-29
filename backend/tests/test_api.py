@@ -127,6 +127,30 @@ def test_runtime_configuration_revision(client):
         assert socket.receive_json()["revision"] == 2
 
 
+def test_inference_size_is_independent_of_transmission_size(client, fake_detector):
+    with client.websocket_connect("/ws/detect", headers={"Origin": ORIGIN}) as socket:
+        ready = configure(socket, resolution="320x180", inference_size=960)
+        assert ready["info"]["supported_options"]["inference_sizes"] == [320, 640, 960]
+        socket.send_bytes(make_frame(width=320, height=180))
+        result = socket.receive_json()
+        assert result["image_width"] == 320 and result["image_height"] == 180
+        assert fake_detector.image_sizes == [960]
+
+
+def test_legacy_client_uses_frame_width_for_inference(client, fake_detector):
+    with client.websocket_connect("/ws/detect", headers={"Origin": ORIGIN}) as socket:
+        configure(socket, resolution="320x180")
+        socket.send_bytes(make_frame())
+        socket.receive_json()
+        assert fake_detector.image_sizes == [320]
+
+
+def test_unsupported_inference_size_rejected(client):
+    with client.websocket_connect("/ws/detect", headers={"Origin": ORIGIN}) as socket:
+        socket.send_json({"type": "configure", "inference_size": 4096})
+        assert socket.receive_json()["code"] == "invalid_control"
+
+
 def test_detection_bounds_and_serialization():
     with pytest.raises(ValueError):
         Detection(class_id=0, label="person", confidence=0.9, x=0.8, y=0, width=0.3, height=1)

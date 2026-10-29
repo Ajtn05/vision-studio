@@ -7,9 +7,10 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class ServerConfig:
-    model_path: Path = Path("models/yolo11n.pt")
+    model_path: Path = Path("models/yoloe-26n-lvis.pt")
     provider: str = "cpu"
     cpu_threads: int = 2
+    nms_iou: float = 0.5
     allowed_origins: tuple[str, ...] = ("tauri://localhost", "http://localhost:1420", "http://127.0.0.1:1420")
     allow_missing_origin: bool = False
     max_message_bytes: int = 1_048_576
@@ -22,9 +23,10 @@ class ServerConfig:
     @classmethod
     def from_environment(cls) -> "ServerConfig":
         config = cls(
-            model_path=Path(os.getenv("VISION_MODEL_PATH", "models/yolo11n.pt")),
+            model_path=Path(os.getenv("VISION_MODEL_PATH", str(cls.model_path))),
             provider=os.getenv("VISION_PROVIDER", "cpu"),
             cpu_threads=int(os.getenv("VISION_CPU_THREADS", "2")),
+            nms_iou=float(os.getenv("VISION_NMS_IOU", "0.5")),
             allowed_origins=tuple(
                 origin.strip()
                 for origin in os.getenv("VISION_ALLOWED_ORIGINS", ",".join(cls.allowed_origins)).split(",")
@@ -39,6 +41,8 @@ class ServerConfig:
             raise ValueError("VISION_PROVIDER must be cpu or openvino")
         if not 1 <= config.cpu_threads <= 8:
             raise ValueError("VISION_CPU_THREADS must be between 1 and 8")
+        if not 0.1 <= config.nms_iou <= 0.9:
+            raise ValueError("VISION_NMS_IOU must be between 0.1 and 0.9")
         if not config.allowed_origins or any(
             "*" in origin or origin == "null" for origin in config.allowed_origins
         ):

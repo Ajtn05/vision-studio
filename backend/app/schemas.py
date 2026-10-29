@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 RESOLUTIONS = {"320x180": (320, 180), "640x360": (640, 360), "960x540": (960, 540)}
+INFERENCE_SIZES = (320, 640, 960)
 
 
 class StrictMessage(BaseModel):
@@ -16,6 +17,8 @@ class SessionConfig(StrictMessage):
     revision: int = Field(default=1, ge=1, le=2**31 - 1, strict=True)
     confidence: float = Field(default=0.4, ge=0.05, le=0.95)
     resolution: Literal["320x180", "640x360", "960x540"] = "640x360"
+    # Omitted by older clients: preserve their frame-size-based behavior.
+    inference_size: Literal[320, 640, 960] | None = None
     model: str | None = Field(default=None, max_length=128)
 
 

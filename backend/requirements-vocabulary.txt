@@ -1,0 +1,5 @@
+# One-time preparation only. Normal inference uses the saved class embeddings.
+git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40
+ftfy>=6.3,<7
+regex>=2024.0
+tqdm>=4.66,<5

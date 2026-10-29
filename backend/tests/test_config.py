@@ -16,3 +16,10 @@ def test_model_and_origins_are_configurable(monkeypatch):
     config = ServerConfig.from_environment()
     assert config.provider == "openvino"
     assert config.allowed_origins == ("tauri://localhost", "http://localhost:1420")
+
+
+@pytest.mark.parametrize("value", ["0", "1", "nan", "inf"])
+def test_invalid_nms_iou_rejected(monkeypatch, value):
+    monkeypatch.setenv("VISION_NMS_IOU", value)
+    with pytest.raises(ValueError, match="VISION_NMS_IOU"):
+        ServerConfig.from_environment()

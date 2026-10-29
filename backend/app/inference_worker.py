@@ -48,7 +48,8 @@ class InferenceWorker:
         if self.detector is None:
             raise RuntimeError("Model is not ready")
         inference_started = time.perf_counter()
-        objects = self.detector.detect(image, session.confidence, RESOLUTIONS[session.resolution][0])
+        image_size = session.inference_size or RESOLUTIONS[session.resolution][0]
+        objects = self.detector.detect(image, session.confidence, image_size)
         inference_ms = (time.perf_counter() - inference_started) * 1000
         return DetectionResponse(
             frame_id=frame.frame_id,

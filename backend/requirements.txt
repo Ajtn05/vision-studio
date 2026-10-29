@@ -2,4 +2,4 @@ fastapi>=0.115,<1
 uvicorn[standard]>=0.54,<0.55
 numpy>=1.26,<3
 opencv-python-headless>=4.10,<5
-ultralytics-opencv-headless>=8.3.0,<9
+ultralytics-opencv-headless>=8.4.191,<9

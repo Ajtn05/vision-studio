@@ -1,6 +1,7 @@
 """A small detector contract and the normal, real Ultralytics implementation."""
 
 import os
+from functools import partial
 from typing import Protocol
 
 import numpy as np
@@ -32,19 +33,52 @@ class YoloDetector:
         os.environ["YOLO_AUTOINSTALL"] = "false"
         import torch
         from ultralytics import YOLO
+        from ultralytics.utils import YAML
 
         torch.set_num_threads(config.cpu_threads)
         self.model_name = config.model_path.name
         self.provider = config.provider
-        self._model = YOLO(str(config.model_path), task="detect")
+        task = None
+        if config.provider == "openvino":
+            metadata_path = config.model_path / "metadata.yaml"
+            if not metadata_path.is_file():
+                raise ValueError("Exported model requires Ultralytics metadata.yaml")
+            task = YAML.load(metadata_path).get("task")
+            if task not in {"detect", "segment"}:
+                raise ValueError("Exported model metadata must specify detect or segment")
+        self._model = YOLO(str(config.model_path), task=task)
+        if self._model.task not in {"detect", "segment"}:
+            raise ValueError("Use an object detection or instance segmentation model")
+        self._predict = partial(self._model.predict, iou=config.nms_iou)
+        if self._model.task == "segment":
+            from ultralytics.engine.model import Model
+
+            from .box_predictor import BoxesOnlySegmentationPredictor
+
+            # YOLOE ships segmentation checkpoints. Keep the segmentation task
+            # metadata for the correct class count, but skip decoding masks:
+            # this application consumes only the model's predicted boxes.
+            self._predict = partial(
+                Model.predict,
+                self._model,
+                predictor=BoxesOnlySegmentationPredictor,
+                agnostic_nms=True,
+                iou=config.nms_iou,
+            )
         # Initialize lazy provider code before reporting model_ready to clients.
         self.detect(np.zeros((360, 640, 3), dtype=np.uint8), confidence=0.4, image_size=640)
+        # Ultralytics select_device resets Torch's thread count while setting
+        # up its lazy backend. Restore the requested limit after that setup.
+        torch.set_num_threads(config.cpu_threads)
+        self.cpu_threads = torch.get_num_threads()
+        self.class_count = len(self._model.names)
 
     def detect(self, image: NDArray[np.uint8], confidence: float, image_size: int) -> list[Detection]:
-        result = self._model.predict(
+        result = self._predict(
             source=image,
             conf=confidence,
             imgsz=image_size,
+            rect=True,
             device="cpu",
             max_det=100,
             verbose=False,
@@ -52,16 +86,27 @@ class YoloDetector:
         objects = []
         if result.boxes is None:
             return objects
-        for box in result.boxes:
-            left, top, right, bottom = box.xyxyn[0].tolist()
-            left, top = max(0.0, min(1.0, left)), max(0.0, min(1.0, top))
-            right, bottom = max(left, min(1.0, right)), max(top, min(1.0, bottom))
-            class_id = int(box.cls[0].item())
+        # Transfer/normalize the batch once. Iterating Boxes constructs tensor
+        # wrappers and recalculates normalized coordinates for every object.
+        boxes = result.boxes.cpu().numpy()
+        corners = np.clip(boxes.xyxyn, 0.0, 1.0)
+        categories, scores = boxes.cls, boxes.conf
+        valid = (
+            np.isfinite(corners).all(axis=1)
+            & np.isfinite(categories)
+            & np.isfinite(scores)
+            & (corners[:, 2] > corners[:, 0])
+            & (corners[:, 3] > corners[:, 1])
+        )
+        for (left, top, right, bottom), category, score in zip(
+            corners[valid], categories[valid], scores[valid]
+        ):
+            class_id = int(category)
             objects.append(
                 Detection(
                     class_id=class_id,
                     label=str(result.names[class_id]),
-                    confidence=float(box.conf[0].item()),
+                    confidence=float(score),
                     x=left,
                     y=top,
                     width=right - left,

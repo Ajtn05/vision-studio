@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import ServerConfig
 from .detector import Detector
 from .inference_worker import InferenceWorker
-from .schemas import RESOLUTIONS
+from .schemas import INFERENCE_SIZES, RESOLUTIONS
 from .websocket_handler import handle_detection_socket
 
 
@@ -43,9 +43,11 @@ def create_app(config: ServerConfig | None = None, detector: Detector | None = N
             "model_ready": worker.detector is not None,
             "model_name": worker.detector.model_name if worker.detector else settings.model_path.name,
             "provider": worker.detector.provider if worker.detector else settings.provider,
+            "class_count": getattr(worker.detector, "class_count", None),
             "supported_options": {
                 "confidence": {"min": 0.05, "max": 0.95, "default": 0.4},
                 "resolutions": list(RESOLUTIONS),
+                "inference_sizes": list(INFERENCE_SIZES),
                 "max_fps": settings.max_fps,
                 "model_selection": False,
             },
