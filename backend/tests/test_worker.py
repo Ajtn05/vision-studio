@@ -27,3 +27,26 @@ def test_timeout_does_not_allow_a_second_queued_inference(fake_detector):
         assert not worker.busy
 
     asyncio.run(scenario())
+
+
+def test_optional_hand_initialization_failure_preserves_objects(fake_detector, tmp_path, monkeypatch):
+    weights = tmp_path / "broken.task"
+    weights.touch()
+
+    def fail(_):
+        raise RuntimeError("Optional hand graph failed")
+
+    monkeypatch.setattr(InferenceWorker, "_load_hands", fail)
+
+    async def scenario():
+        worker = InferenceWorker(replace(ServerConfig(), hand_model_path=weights), fake_detector)
+        try:
+            await worker.start()
+            assert worker.ready
+            assert worker.resolve_model("measurement") == "measurement"
+            assert worker.hand_detector is None
+            assert worker.hand_error == "Optional hand graph failed"
+        finally:
+            await worker.stop()
+
+    asyncio.run(scenario())

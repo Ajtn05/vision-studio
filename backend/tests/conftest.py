@@ -1,5 +1,6 @@
 import struct
 import threading
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -48,5 +49,7 @@ def fake_detector():
 
 @pytest.fixture
 def client(fake_detector):
-    with TestClient(create_app(ServerConfig(), fake_detector)) as client:
+    with TestClient(
+        create_app(ServerConfig(hand_model_path=Path("missing-test-hands.task")), fake_detector)
+    ) as client:
         yield client

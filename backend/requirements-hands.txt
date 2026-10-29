@@ -1,0 +1,4 @@
+# Optional hand/finger mode. Install in the backend environment only.
+mediapipe>=0.10.32,<0.11
+# Keep MediaPipe's OpenCV dependency aligned with the backend's OpenCV 4 API.
+opencv-contrib-python>=4.11,<5

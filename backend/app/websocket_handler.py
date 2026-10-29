@@ -26,7 +26,7 @@ async def handle_detection_socket(
         await socket.close(code=1008)
         return
     await socket.accept()
-    if lease.locked() or worker.busy or worker.detector is None:
+    if lease.locked() or worker.busy or not worker.ready:
         await socket.send_json(
             {
                 "type": "error",
@@ -53,7 +53,7 @@ async def handle_detection_socket(
             frame = parse_frame(data, worker.config.max_message_bytes)
             try:
                 result = await worker.process(frame, current)
-                await send(result.model_dump())
+                await send(result.model_dump(exclude_none=True))
             except FrameError as error:
                 await send(
                     {
@@ -116,12 +116,15 @@ async def handle_detection_socket(
                             candidate = SessionConfig.model_validate(control)
                             if session is not None and candidate.revision <= session.revision:
                                 raise ValueError("Configuration revision must increase")
-                            if candidate.model not in {None, info["model_name"]}:
-                                raise ValueError(
-                                    "Only the loaded model is available; change models on the server"
-                                )
+                            candidate.model = worker.resolve_model(candidate.model)
                             session = candidate
-                            await send({"type": "ready", "config": session.model_dump(), "info": info})
+                            await send(
+                                {
+                                    "type": "ready",
+                                    "config": session.model_dump(),
+                                    "info": {**info, **worker.active_model_info(session.model)},
+                                }
+                            )
                         else:
                             raise ValueError("Expected configure or ping")
                     except (ValueError, ValidationError) as error:

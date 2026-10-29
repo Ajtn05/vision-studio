@@ -8,6 +8,7 @@ from pathlib import Path
 @dataclass(frozen=True)
 class ServerConfig:
     model_path: Path = Path("models/yoloe-26n-lvis.pt")
+    hand_model_path: Path = Path("models/hand_landmarker.task")
     provider: str = "cpu"
     cpu_threads: int = 2
     nms_iou: float = 0.5
@@ -24,6 +25,7 @@ class ServerConfig:
     def from_environment(cls) -> "ServerConfig":
         config = cls(
             model_path=Path(os.getenv("VISION_MODEL_PATH", str(cls.model_path))),
+            hand_model_path=Path(os.getenv("VISION_HAND_MODEL_PATH", str(cls.hand_model_path))),
             provider=os.getenv("VISION_PROVIDER", "cpu"),
             cpu_threads=int(os.getenv("VISION_CPU_THREADS", "2")),
             nms_iou=float(os.getenv("VISION_NMS_IOU", "0.5")),

@@ -27,7 +27,14 @@ def test_health_and_info_do_not_infer(client, fake_detector):
 
 
 def test_health_remains_available_without_model():
-    with TestClient(create_app(ServerConfig(model_path=Path("nonexistent-test-model.pt")))) as client:
+    with TestClient(
+        create_app(
+            ServerConfig(
+                model_path=Path("nonexistent-test-model.pt"),
+                hand_model_path=Path("nonexistent-test-hands.task"),
+            )
+        )
+    ) as client:
         assert client.get("/health").status_code == 200
         assert client.get("/health").json()["model_ready"] is False
 
@@ -151,11 +158,56 @@ def test_unsupported_inference_size_rejected(client):
         assert socket.receive_json()["code"] == "invalid_control"
 
 
+def test_model_catalog_reports_available_modes_and_setup_reason(client):
+    info = client.get("/api/info").json()
+    assert info["supported_options"]["model_selection"] is True
+    models = {model["id"]: model for model in info["models"]}
+    assert models["objects"]["available"] is True
+    assert models["measurement"]["available"] is True
+    assert models["hands"]["available"] is False
+    assert "prepare_hand_model.py" in models["hands"]["reason"]
+
+
+def test_switching_to_measurement_uses_the_existing_detector(client, fake_detector):
+    with client.websocket_connect("/ws/detect", headers={"Origin": ORIGIN}) as socket:
+        first = configure(socket, model="test-detector")  # Legacy filename still works.
+        assert first["config"]["model"] == "objects"
+        ready = configure(socket, revision=2, model="measurement")
+        assert ready["info"]["active_model"] == "measurement"
+        socket.send_bytes(make_frame())
+        result = socket.receive_json()
+        assert result["model"] == "measurement"
+        assert result["revision"] == 2
+        assert fake_detector.calls == 1
+
+
+def test_uninstalled_hand_model_rejected_with_setup_instructions(client):
+    with client.websocket_connect("/ws/detect", headers={"Origin": ORIGIN}) as socket:
+        socket.send_json({"type": "configure", "model": "hands"})
+        error = socket.receive_json()
+        assert error["code"] == "invalid_control"
+        assert "requirements-hands.txt" in error["message"]
+
+
+def test_hand_only_server_is_ready_and_routes_to_hand_detector(client, fake_detector):
+    worker = client.app.state.worker
+    worker.hand_detector = fake_detector
+    worker.detector = None
+    assert client.get("/health").json()["model_ready"] is True
+    with client.websocket_connect("/ws/detect", headers={"Origin": ORIGIN}) as socket:
+        ready = configure(socket)
+        assert ready["config"]["model"] == "hands"
+        assert ready["info"]["active_model"] == "hands"
+        socket.send_bytes(make_frame())
+        assert socket.receive_json()["model"] == "hands"
+        assert fake_detector.calls == 1
+
+
 def test_detection_bounds_and_serialization():
     with pytest.raises(ValueError):
         Detection(class_id=0, label="person", confidence=0.9, x=0.8, y=0, width=0.3, height=1)
     item = Detection(class_id=0, label="person", confidence=0.9, x=0.1, y=0.2, width=0.3, height=0.4)
-    assert json.loads(item.model_dump_json()) == {
+    assert json.loads(item.model_dump_json(exclude_none=True)) == {
         "class_id": 0,
         "label": "person",
         "confidence": 0.9,

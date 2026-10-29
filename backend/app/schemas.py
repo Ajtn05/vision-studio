@@ -27,6 +27,18 @@ class Ping(StrictMessage):
     nonce: int = Field(ge=0, le=2**53 - 1, strict=True)
 
 
+class Landmark(StrictMessage):
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    z: float
+
+
+class HandDetails(StrictMessage):
+    handedness: Literal["Left", "Right"]
+    landmarks: list[Landmark] = Field(min_length=21, max_length=21)
+    extended_fingers: list[Literal["thumb", "index", "middle", "ring", "pinky"]] = Field(max_length=5)
+
+
 class Detection(StrictMessage):
     class_id: int = Field(ge=0)
     label: str = Field(min_length=1, max_length=128)
@@ -35,6 +47,7 @@ class Detection(StrictMessage):
     y: float = Field(ge=0, le=1)
     width: float = Field(ge=0, le=1)
     height: float = Field(ge=0, le=1)
+    hand: HandDetails | None = None
 
     @model_validator(mode="after")
     def box_fits_image(self) -> "Detection":
@@ -53,3 +66,4 @@ class DetectionResponse(StrictMessage):
     image_width: int = Field(gt=0)
     image_height: int = Field(gt=0)
     objects: list[Detection]
+    model: Literal["objects", "hands", "measurement"] = "objects"

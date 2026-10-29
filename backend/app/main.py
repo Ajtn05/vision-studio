@@ -1,4 +1,4 @@
-"""ASGI entry point: run one Uvicorn worker for one shared model."""
+"""ASGI entry point: run one Uvicorn worker for the shared local models."""
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -40,16 +40,15 @@ def create_app(config: ServerConfig | None = None, detector: Detector | None = N
         return {
             "name": "Vision Studio",
             "protocol_version": 1,
-            "model_ready": worker.detector is not None,
-            "model_name": worker.detector.model_name if worker.detector else settings.model_path.name,
-            "provider": worker.detector.provider if worker.detector else settings.provider,
-            "class_count": getattr(worker.detector, "class_count", None),
+            "model_ready": worker.ready,
+            **worker.active_model_info(),
+            "models": worker.model_catalog(),
             "supported_options": {
                 "confidence": {"min": 0.05, "max": 0.95, "default": 0.4},
                 "resolutions": list(RESOLUTIONS),
                 "inference_sizes": list(INFERENCE_SIZES),
                 "max_fps": settings.max_fps,
-                "model_selection": False,
+                "model_selection": True,
             },
             "capabilities": {
                 "max_clients": 1,
@@ -63,7 +62,7 @@ def create_app(config: ServerConfig | None = None, detector: Detector | None = N
 
     @application.get("/health")
     async def health() -> dict:
-        return {"status": "ok", "model_ready": worker.detector is not None, "worker_busy": worker.busy}
+        return {"status": "ok", "model_ready": worker.ready, "worker_busy": worker.busy}
 
     @application.get("/api/info")
     async def info() -> dict:
